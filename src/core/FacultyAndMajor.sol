@@ -3,258 +3,399 @@ pragma solidity ^0.8.20;
 
 import {Check} from "../libraries/Check.sol";
 import {IFacultyAndMajor} from "../interfaces/IFacultyAndMajor.sol";
+import {OwnerControlled} from "../access/OwnerControlled.sol";
 
-contract FacultyAndMajor is IFacultyAndMajor {
+contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
 
+    // ----------------------------
+    // Type declarations
+    // ----------------------------
+    /* Struct */
     struct Major {
-        uint8 idMajor;
+        uint8 idMajor; // stable 1-based ID
         string majorName;
-        string middleNum;
-        uint16 studentCount;
-        uint cost;
+        string majorCode;
+        uint16 enrolledCount;
+        uint16 maxEnrollment;
+        uint256 enrollmentCost;
     }
 
     struct Faculty {
-        uint8 idFaculty;
+        uint8 idFaculty; // stable 1-based ID
         string facultyName;
-        string abbreviationFaculty;
+        string facultyCode;
         mapping(string => Major) majors;
         string[] majorNames;
     }
 
-    Faculty[] public facultyList;
+    /* Public state variables */
+    string public universityName;
+    Faculty[] public faculties;
+    uint8 public maxLengthFacultyCode;
+    uint8 public maxLengthMajorCode;
+    
+    /* Private state variables */
     mapping(string => uint8) private facultyIndices;
 
+    /* Errors */
     error FacultyNotFound(string faculty);
     error FacultyAlreadyExists(string faculty);
     error MajorNotFound(string major);
     error MajorAlreadyExists(string major);
-    error EmptyInput(string field);
-    error InvalidMiddleDigits(string middleNim);
+    error InvalidMajorCode(string majorCode);
+    error InvalidLength();
+    error InvalidFacultyCode(string facultyCode);
     error HasExistingStudents(string student);
+    error EnrolledCountCannotBeLessThanZero();
 
-    function facultySearch(string memory facultyInput) internal view returns (bool, uint8) {
-        uint8 index = facultyIndices[facultyInput];
-        // Return true if faculty exists (index > 0), false otherwise
-        return (index != 0, index > 0 ? index - 1 : 0);
+
+    /* Functions */
+    constructor(
+        string memory _universityName, 
+        uint8 _maxLengthFacultyCode, 
+        uint8 _maxLengthMajorCode
+    ) {
+        universityName = _universityName;
+        maxLengthFacultyCode = _maxLengthFacultyCode;
+        maxLengthMajorCode = _maxLengthMajorCode;
     }
 
-    function majorSearch(uint iterationFaculty, string memory majorInput) private view returns (bool, uint8){
-        // Faculty storage faculty = facultyList[foundFaculty];
-        uint8 idMajor = facultyList[iterationFaculty].majors[majorInput].idMajor;
-        return (idMajor != 0, idMajor > 0 ? idMajor - 1 : 0);
-        // if (faculty.majorNames.length != 0) {
-        //     // Check if the major exists before subtracting
-        //     if (faculty.majors[majorInput].idMajor > 0) {
-        //         return (true, faculty.majors[majorInput].idMajor - 1);
-        //     }
-        // }
-        // return (false, 0);
-    }
-    function costSearch(uint foundFaculty, string memory foundMajor) private view returns(uint){
-        Faculty storage faculty = facultyList[foundFaculty];
-        uint resultCost = faculty.majors[foundMajor].cost;
-        return resultCost;
-    }
+    /* External functions */
+    function addFaculty(string calldata facultyName, string calldata facultyCode) 
+        external 
+        override
+        onlyOwner 
+    {
+        Check.validateOnlyLettersAndSpaces(facultyName);
 
-    function addFaculty(string memory facultyInput, string memory abbreviation) external {
-        if(bytes(facultyInput).length == 0) revert EmptyInput("Nama fakultas tidak boleh kosong");        
-        string memory afterChecking = Check.capitalizeFirstLetters(facultyInput);
+        string memory formattedName = Check.capitalizeFirstLetters(facultyName);
 
-        (bool result,) = facultySearch(facultyInput);
-        if(result) revert FacultyAlreadyExists(facultyInput);
+        (bool facultyExist,) = findFaculty(formattedName);
+        if(facultyExist) revert FacultyAlreadyExists(formattedName);
         
-        Faculty storage newFaculty = facultyList.push();
-        uint8 facultyLength = uint8(facultyList.length);
+        Check.validateLengthCode(facultyCode, maxLengthFacultyCode);
+
+        Faculty storage newFaculty = faculties.push();
+        uint8 facultyLength = uint8(faculties.length);
         newFaculty.idFaculty = facultyLength;
-        newFaculty.facultyName = afterChecking;
-        newFaculty.abbreviationFaculty = abbreviation;
-        facultyIndices[afterChecking] = facultyLength;
-        emit NewFaculty(facultyLength, afterChecking, afterChecking, abbreviation);
+        newFaculty.facultyName = formattedName;
+        newFaculty.facultyCode = facultyCode;
+        facultyIndices[formattedName] = newFaculty.idFaculty;
+
+        emit NewFaculty(newFaculty.idFaculty, newFaculty.facultyName, newFaculty.facultyCode);
     }
 
-    function updateFaculty(string memory facultyInput, string memory changeName,string memory abbreviation) external {
-        (bool foundFaculty, uint8 iterationFaculty) = facultySearch(facultyInput);
-        if(bytes(changeName).length == 0) revert EmptyInput("Nama fakultas tidak boleh kosong");
+    function updateFaculty(
+        string calldata facultyName, 
+        string calldata newName, 
+        string calldata newFacultyCode
+    ) 
+        external
+        override
+        onlyOwner 
+    {
+        Check.validateOnlyLettersAndSpaces(facultyName);
+        Check.validateOnlyLettersAndSpaces(newName);
         
-        if(bytes(abbreviation).length == 0) revert EmptyInput("Singkatan fakultas tidak boleh kosong");
-        if(!foundFaculty) revert FacultyNotFound(facultyInput);
-        Faculty storage faculty = facultyList[iterationFaculty];
-        faculty.facultyName = changeName;
-        faculty.abbreviationFaculty = abbreviation;
-        emit UpdateFaculty(iterationFaculty, facultyInput, changeName, changeName, abbreviation);
+        (bool facultyExist, uint8 facultyIndex) = findFaculty(facultyName);
+        if(!facultyExist) revert FacultyNotFound(facultyName);
+
+        Check.validateLengthCode(newFacultyCode, maxLengthFacultyCode);
+
+        Faculty storage faculty = faculties[facultyIndex];
+
+        if (!(Check.compareStrings(facultyName, newName))){
+            faculty.facultyName = newName;
+            delete facultyIndices[facultyName];  // Remove old key
+            facultyIndices[newName] = uint8(facultyIndex) + 1 ;  // Add key
+        }
+
+        if (!(Check.compareStrings(faculty.facultyCode, newFacultyCode))){
+            faculty.facultyCode = newFacultyCode;
+        }
+        emit UpdateFaculty(faculty.idFaculty, facultyName, faculty.facultyName, faculty.facultyCode);
     }
 
-    function removeFaculty(string memory facultyInput) external {
-        (bool foundFaculty, uint8 iterationFaculty) = facultySearch(facultyInput);
-        if(!foundFaculty) revert FacultyNotFound(facultyInput);
 
-        Faculty storage faculty = facultyList[iterationFaculty];
-        Faculty storage lastFaculty = facultyList[facultyList.length - 1];
-        if(faculty.majorNames.length > 0) revert MajorAlreadyExists("Fakultas masih memiliki jurusan");
+    function removeFaculty(string calldata facultyName) external override onlyOwner {
+        Check.validateOnlyLettersAndSpaces(facultyName);
+        
+        (bool facultyExist, uint8 facultyIndex) = findFaculty(facultyName);
+        if(!facultyExist) revert FacultyNotFound(facultyName);
+
+        Faculty storage faculty = faculties[facultyIndex];
+        Faculty storage lastFaculty = faculties[faculties.length - 1];
+        if(faculty.majorNames.length > 0) revert MajorAlreadyExists("Faculty still has majors");
         
         // If it's not the last item, move the last item to the position of the removed item
-        if (iterationFaculty < facultyList.length - 1) {
+        if (facultyIndex < faculties.length - 1) {
             // Copy the last faculty to the position of the faculty being removed
             faculty.idFaculty = lastFaculty.idFaculty;
             faculty.facultyName = lastFaculty.facultyName;
-            faculty.abbreviationFaculty = lastFaculty.abbreviationFaculty;
+            faculty.facultyCode = lastFaculty.facultyCode;
             
             // Copy major names from the last faculty
-            string[] storage lastMajorNames = lastFaculty.majorNames;
-            uint8 majorCount = uint8(lastMajorNames.length);
+            string[] memory tempMajorNames = lastFaculty.majorNames;
+            uint8 majorCount = uint8(tempMajorNames.length);
         
             for (uint j = 0; j < majorCount; j++) {
-                string memory majorName = lastMajorNames[j];
+                string memory majorName = tempMajorNames[j];
                 faculty.majorNames.push(majorName);
                 faculty.majors[majorName] = lastFaculty.majors[majorName];
             }
 
             // Update the faculty index mapping for the moved faculty
-            facultyIndices[faculty.facultyName] = iterationFaculty;
+            facultyIndices[faculty.facultyName] = facultyIndex + 1;
         }
         // Remove the last element
-        facultyList.pop();
+        faculties.pop();
         // Remove the faculty from the index mapping
-        delete facultyIndices[facultyInput];
-        emit RemoveFaculty(iterationFaculty, facultyInput);
+        delete facultyIndices[facultyName];
+        emit RemoveFaculty(facultyIndex + 1 , facultyName);
     }
 
-    function forChecking(string memory facultyInput, string memory majorInput) private view returns(uint8, uint8){
-        (bool result, uint8 iterationFaculty) = facultySearch(facultyInput);
-        if(!result) revert FacultyNotFound(facultyInput);
-        
-        (bool result2, uint8 iterationMajor) = majorSearch(iterationFaculty, majorInput);
-        if(!result2) revert MajorNotFound(majorInput);
-        
-        return (iterationFaculty, iterationMajor);
-    }
+    function addMajor(
+        string calldata facultyName, 
+        string calldata majorName, 
+        string calldata majorCode, 
+        uint16 maxEnrollment, 
+        uint enrollmentCost
+    ) 
+        external 
+        override 
+        onlyOwner 
+    {
+        Check.validateOnlyLettersAndSpaces(facultyName);
+        Check.validateOnlyLettersAndSpaces(majorName);
 
-    function addMajor(string memory facultyInput, string memory majorInput, string memory inputMiddleNum, uint _cost) external override {
-        if(bytes(inputMiddleNum).length == 0) revert EmptyInput("Middle NIM tidak boleh kosong");
-        if(_cost == 0) revert EmptyInput("Biaya tidak boleh kosong");
+        (bool existFaculty, uint8 facultyIndex) = findFaculty(facultyName);
+        if(!existFaculty) revert FacultyNotFound(facultyName);
 
-        (bool result, uint8 iterationFaculty) = facultySearch(facultyInput);
-        if(!result) revert FacultyNotFound(facultyInput);
+        uint8 existingId = faculties[facultyIndex].majors[majorName].idMajor;
+        if(existingId != 0) revert MajorAlreadyExists(majorName);
 
-        (bool result2, ) = majorSearch(iterationFaculty, majorInput);
-        if(result2) revert MajorAlreadyExists(majorInput);
+        Check.validateLengthCode(majorCode, maxLengthMajorCode);
 
-        emit NewMajor(0, facultyInput, majorInput, majorInput, inputMiddleNum, _cost);
-
-        (bool isValid, string memory errorMessage) = Check.validateMiddleDigits(inputMiddleNum);
-        if(!isValid) revert InvalidMiddleDigits(errorMessage);
-        
-        emit NewMajor(0, facultyInput, majorInput, majorInput, inputMiddleNum, _cost);
-        Faculty storage faculty = facultyList[iterationFaculty];
+        Faculty storage faculty = faculties[facultyIndex];
+        Major storage major = faculty.majors[majorName];
         uint8 majorLength = uint8(faculty.majorNames.length) + 1;
-        faculty.majors[majorInput] = Major({
-            idMajor: majorLength,
-            majorName: majorInput,
-            middleNum: inputMiddleNum,
-            studentCount: 0,
-            cost: _cost
-        });
 
-        faculty.majorNames.push(majorInput);
-        emit NewMajor(majorLength, facultyInput, majorInput, majorInput, inputMiddleNum, _cost);
+        major.idMajor = majorLength;
+        major.majorName = majorName;
+        major.majorCode = majorCode;
+        major.enrolledCount = 0;
+        major.maxEnrollment = maxEnrollment;
+        major.enrollmentCost = enrollmentCost;
+
+        faculty.majorNames.push(majorName);
+        emit NewMajor(faculty.idFaculty, major.idMajor, major.majorName, major.majorCode, major.maxEnrollment, enrollmentCost);
     }
 
-    function updateMajor(string memory facultyInput, string memory majorInput, string memory changeName, string memory inputMiddleNum, uint _cost) external override {
-        // Validate inputs first
-    
-        if(bytes(changeName).length == 0) revert EmptyInput("Nama jurusan tidak boleh kosong");
-        if(_cost == 0) revert EmptyInput("Biaya tidak boleh kosong");
+    function updateMajor(
+        string calldata facultyName, 
+        string calldata majorName, 
+        string calldata newMajorName, 
+        string calldata newMajorCode, 
+        uint16 newMaxEnrollment,
+        uint256 newEnrollmentCost
+    ) 
+        external 
+        override 
+        onlyOwner 
+    {
+        Check.validateOnlyLettersAndSpaces(facultyName);
+        Check.validateOnlyLettersAndSpaces(newMajorName);
+        Check.validateLengthCode(newMajorCode, maxLengthMajorCode);
         
-        (bool isValid, string memory errorMessage) = Check.validateMiddleDigits(inputMiddleNum);
-        if(!isValid) revert InvalidMiddleDigits(errorMessage);
+        (uint8 facultyIndex, ) = validateFacultyAndMajor(facultyName, majorName);
+        Faculty storage faculty = faculties[facultyIndex];
         
-        // Get indices once
-        (uint8 iterationFaculty, uint iterationMajor) = forChecking(facultyInput, majorInput);
+        // Handle rename (if different)
+        if (!Check.compareStrings(majorName, newMajorName)) {
+            _renameMajor(faculty, majorName, newMajorName);
+        }
         
-        // Cache storage references
-        Faculty storage faculty = facultyList[iterationFaculty];
-        Major storage major = faculty.majors[majorInput];
+        // Update the major (whether renamed or not)
+        Major storage major = faculty.majors[
+            Check.compareStrings(majorName, newMajorName) ? majorName : newMajorName
+        ];
+        major.majorCode = newMajorCode;
+        major.maxEnrollment = newMaxEnrollment;
+        major.enrollmentCost = newEnrollmentCost;
         
-        // Update state
-        major.majorName = changeName;
-        major.middleNum = inputMiddleNum;
-        major.cost = _cost;
-        faculty.majorNames[iterationMajor] = changeName;
-        
-        // Emit event
-        emit UpdateMajor(iterationMajor+1, facultyInput, majorInput, changeName, changeName, inputMiddleNum, _cost);
+        emit UpdateMajor(faculty.idFaculty, major.idMajor, majorName, major.majorName, major.majorCode, major.maxEnrollment, major.enrollmentCost);
     }
 
-    function removeMajor(string memory facultyInput, string memory majorInput) external override{
-        (uint8 iterationFaculty, uint8 iterationMajor) = forChecking(facultyInput, majorInput);        
-        Faculty storage faculty = facultyList[iterationFaculty];
+    function removeMajor(string calldata facultyName, string calldata majorName) 
+        external 
+        override 
+        onlyOwner 
+    {
+        Check.validateOnlyLettersAndSpaces(facultyName);
+        Check.validateOnlyLettersAndSpaces(majorName);
         
-        if(faculty.majors[majorInput].studentCount > 0) revert HasExistingStudents("Jurusan masih memiliki mahasiswa");
-        delete faculty.majors[majorInput];
+        (uint8 facultyIndex, uint8 majorIndex) = validateFacultyAndMajor(facultyName, majorName);        
+        Faculty storage faculty = faculties[facultyIndex];
+        
+        if(faculty.majors[majorName].enrolledCount > 0) {
+            revert HasExistingStudents("Major still has students");
+        }
+        
         uint8 length = uint8(faculty.majorNames.length);
         
-        for (uint8 i = iterationMajor; i < length - 1; i++) {
+        for (uint8 i = majorIndex; i < length - 1; i++) {
             faculty.majorNames[i] = faculty.majorNames[i + 1];
         }
+
         faculty.majorNames.pop();
-        emit RemoveMajor(iterationMajor, facultyInput, majorInput);
+        delete faculty.majors[majorName];
+        emit RemoveMajor(faculty.idFaculty, majorIndex + 1, majorName);
+    }
+
+    function setMaxLengthFacultyCode(uint8 newLength) external onlyOwner {
+        if(newLength < 2 || newLength > 10) {
+            revert InvalidLength();
+        }
+        maxLengthFacultyCode = newLength;
+        emit MaxLengthFacultyCodeUpdated(newLength);
+    }
+
+    function setMaxLengthMajorCode(uint8 newLength) external onlyOwner {
+        if(newLength < 2 || newLength > 10) {
+            revert InvalidLength();
+        }
+        maxLengthMajorCode = newLength;
+        emit MaxLengthMajorCodeUpdated(newLength);
+    }
+
+    function incrementStudentCount(string calldata facultyName, string calldata majorName) 
+        external 
+        override
+        onlyOwner 
+        returns(uint)
+    {
+        (uint8 facultyIndex, ) = validateFacultyAndMajor(facultyName, majorName);
+        Major storage major = faculties[facultyIndex].majors[majorName];
+        major.enrolledCount += 1;
+        return major.enrolledCount;
+    }
+
+    function decrementStudentCount(string calldata facultyName, string calldata majorName) 
+        external 
+        override
+        onlyOwner 
+    {
+        (uint8 facultyIndex, ) = validateFacultyAndMajor(facultyName, majorName);
+        Major storage major = faculties[facultyIndex].majors[majorName];
+        if (major.enrolledCount == 0) {
+            revert EnrolledCountCannotBeLessThanZero();
+        }
+        major.enrolledCount -= 1;
+    }
+
+    /* External functions that are view */
+    function getFacultyCode(string calldata facultyName) 
+        external 
+        override 
+        view 
+        returns (string memory facultyCode)
+    {
+        (bool existFaculty, uint8 facultyIndex) = findFaculty(facultyName);
+        if(!existFaculty) revert FacultyNotFound(facultyName);
+
+        facultyCode = faculties[facultyIndex].facultyCode;
+    }
+
+    function getMajorCode(string calldata facultyName, string calldata majorName) 
+        external 
+        override 
+        view 
+        returns (string memory majorCode)
+    {
+        (uint8 facultyIndex, ) = validateFacultyAndMajor(facultyName, majorName);
+        majorCode = faculties[facultyIndex].majors[majorName].majorCode;
+    }
+
+    function getMajorCost(string calldata facultyName, string calldata majorName) 
+        external 
+        override 
+        view 
+        returns (uint)
+    {
+        (uint8 facultyIndex, ) = validateFacultyAndMajor(facultyName, majorName);
+        Faculty storage faculty = faculties[facultyIndex];
+        uint enrollmentCost = faculty.majors[majorName].enrollmentCost;        
+        return enrollmentCost;
     }
     
-    function getAbbreviation(string memory facultyInput) external override view returns (string memory){
-        (bool result, uint8 iterationFaculty) = facultySearch(facultyInput);
-        if(!result) revert FacultyNotFound(facultyInput);
-    
-        string memory resultAbbreviation = facultyList[iterationFaculty].abbreviationFaculty;
-        return resultAbbreviation;
+    function getMajorDetails(string calldata facultyName, string calldata majorName) 
+        external 
+        override 
+        view 
+        returns (uint8, string memory, string memory, uint16, uint)
+    {
+        (uint8 facultyIndex, ) = validateFacultyAndMajor(facultyName, majorName);
+        Major storage major = faculties[facultyIndex].majors[majorName];
+        return (major.idMajor, major.majorName, major.majorCode, major.enrolledCount, major.enrollmentCost);
     }
 
-    function getMajorMiddleNum(string memory facultyInput, string memory majorInput) external override view returns (string memory resultMiddleNum){
-        (uint8 iterationFaculty, ) = forChecking(facultyInput, majorInput);
-        resultMiddleNum = facultyList[iterationFaculty].majors[majorInput].middleNum;
-    }
-
-    function getMajorCost(string memory facultyInput, string memory majorInput) external override view returns (uint){
-        (uint8 iterationFaculty, ) = forChecking(facultyInput, majorInput);        
-        uint cost = costSearch(iterationFaculty, majorInput);
-        return cost;
-    }
-    
-    // note : add Math library by openzeppelin for increment and decrement 
-    function incrementStudentCount(string memory facultyInput, string memory majorInput) external override returns(uint){
-        (uint8 iterationFaculty, ) = forChecking(facultyInput, majorInput);
-        Major storage major = facultyList[iterationFaculty].majors[majorInput];
-        major.studentCount += 1;
-        return major.studentCount;
-    }
-
-    function decrementStudentCount(string memory facultyInput, string memory majorInput) external override {
-        (uint8 iterationFaculty, ) = forChecking(facultyInput, majorInput);
-        Major storage major = facultyList[iterationFaculty].majors[majorInput];
-        require(major.studentCount > 0, "Students count cannot be less than zero");
-        major.studentCount -= 1;
-    }
-
-    function getMajorDetails(string memory facultyInput, string memory majorInput) external override view returns (uint8, string memory, string memory, uint16, uint){
-        (uint8 iterationFaculty, ) = forChecking(facultyInput, majorInput);
-        Major storage major = facultyList[iterationFaculty].majors[majorInput];
-        return (major.idMajor, major.majorName, major.middleNum, major.studentCount, major.cost);
-    }
-
-    function listMajors(string memory facultyInput) external override view returns (string[] memory) {
-        (bool found, uint8 iterationFaculty) = facultySearch(facultyInput);
-        if(!found) revert FacultyNotFound("Fakultas tidak ditemukan");
-        return facultyList[iterationFaculty].majorNames;
+    function listMajors(string calldata facultyName) 
+        external 
+        override 
+        view 
+        returns (string[] memory) 
+    {
+        (bool existFaculty, uint8 facultyIndex) = findFaculty(facultyName);
+        if(!existFaculty) revert FacultyNotFound("Faculty not found");
+        return faculties[facultyIndex].majorNames;
     }
     
     function listFaculties() external override view returns (string[] memory){
-        string[] memory getFacultyName = new string[](facultyList.length);
-        uint8 length = uint8(facultyList.length);
+        string[] memory getFacultyName = new string[](faculties.length);
+        uint8 length = uint8(faculties.length);
         for(uint8 i = 0; i < length; i++){
-            getFacultyName[i] = facultyList[i].facultyName;
+            getFacultyName[i] = faculties[i].facultyName;
         }
-        
         return getFacultyName;
     }
     
+    /* Private functions */
+    // Internal helper to reduce stack depth
+    function _renameMajor(Faculty storage faculty, string memory oldName, string memory newName) private {
+        Major storage oldMajor = faculty.majors[oldName];
+        Major storage newMajor = faculty.majors[newName];
+        
+        newMajor.idMajor = oldMajor.idMajor;
+        newMajor.majorName = newName;
+        newMajor.majorCode = oldMajor.majorCode;
+        newMajor.enrolledCount = oldMajor.enrolledCount;
+        newMajor.maxEnrollment = oldMajor.maxEnrollment;
+        newMajor.enrollmentCost = oldMajor.enrollmentCost;
+        
+        delete faculty.majors[oldName];
+    }
+
+    function findFaculty(string memory facultyName) 
+        private 
+        view 
+        returns (bool, uint8) 
+    {
+        uint8 index = facultyIndices[facultyName];
+        // Return true if faculty exists (index > 0), false otherwise
+        return (index != 0, index > 0 ? index - 1 : 0);
+    }
+
+    function validateFacultyAndMajor(string memory facultyName, string memory majorName) 
+        private 
+        view 
+        returns(uint8, uint8)
+    {
+        (bool existFaculty, uint8 facultyIndex) = findFaculty(facultyName);
+        if(!existFaculty) revert FacultyNotFound(facultyName);
+        
+        uint8 idMajor = faculties[facultyIndex].majors[majorName].idMajor;
+        if(idMajor == 0) revert MajorNotFound(majorName);
+        
+        return (facultyIndex, idMajor - 1);
+    }
 }        
