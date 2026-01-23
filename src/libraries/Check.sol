@@ -28,6 +28,8 @@ library Check {
             } else if (capitalizeNext && b[i] >= "a" && b[i] <= "z") {
                 b[i] = bytes1(uint8(b[i]) - 32);
                 capitalizeNext = false;
+            } else if (!capitalizeNext && b[i] >= "A" && b[i] <= "Z") {
+                b[i] = bytes1(uint8(b[i]) + 32);
             } else {
                 capitalizeNext = false;
             }
@@ -35,7 +37,7 @@ library Check {
         return string(b);
     }
 
-    function validateLengthCode(string memory inputCode, uint8 maxLength) internal pure returns (bool isValid) {
+    function validateLengthCode(string memory inputCode, uint32 maxLength) internal pure returns (bool isValid) {
         bytes memory code = bytes(inputCode);
         uint length = code.length;
         
