@@ -5,7 +5,8 @@ libs = ["lib"]
 solc = "0.8.21"
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
-    "@bokkypoobahs/=lib/BokkyPooBahsDateTimeLibrary/"
+    "@bokkypoobahs/=lib/BokkyPooBahsDateTimeLibrary/",
+    "@chainlink/=lib/chainlink-brownie-contracts/"
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
