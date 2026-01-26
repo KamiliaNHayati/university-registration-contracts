@@ -10,6 +10,9 @@ interface IFacultyAndMajor {
     function updateMajor(string calldata facultyName, string calldata majorName, string calldata newMajorName, string calldata newMajorCode, uint16 newMaxEnrollment, uint newEnrollmentCost) external;
     function removeMajor(string calldata facultyName, string calldata majorName) external;
 
+    function setLengthFacultyCode(uint8 newLength) external;
+    function setLengthMajorCode(uint8 newLength) external;
+
     function getMajorCost(string calldata facultyName, string calldata majorName) external view returns (uint);
     function getMajorDetails(string calldata facultyName, string calldata majorName) external view returns (uint8, string memory, string memory, uint16, uint);
     function getFacultyCode(string calldata facultyName) external view returns (string memory);
