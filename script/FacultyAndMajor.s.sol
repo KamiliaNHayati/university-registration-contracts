@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {Script, console} from "forge-std/Script.sol"; // forge-std stands for forge-standard library
+import {Script} from "forge-std/Script.sol";
 import {FacultyAndMajor} from "../src/core/FacultyAndMajor.sol";
 
 contract FacultyAndMajorScript is Script {

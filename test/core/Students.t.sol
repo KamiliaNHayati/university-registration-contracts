@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console} from "forge-std/Test.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {BokkyPooBahsDateTimeLibrary} from "@bokkypoobahs/contracts/BokkyPooBahsDateTimeLibrary.sol";
+import {Test} from "forge-std/Test.sol";
 import {IFacultyAndMajor} from "../../src/interfaces/IFacultyAndMajor.sol";
-import {FacultyAndMajor} from "../../src/core/FacultyAndMajor.sol";
 import {FacultyAndMajorScript} from "../../script/FacultyAndMajor.s.sol";
 import {Students} from "../../src/core/Students.sol";
 import {StudentsScript} from "../../script/Students.s.sol";
 import {OwnerControlled} from "../../src/access/OwnerControlled.sol";
 import {Check} from "../../src/libraries/Check.sol";
-import {Email} from "../../src/libraries/Email.sol";
 
 contract StudentsTest is Test{
 
@@ -687,7 +683,8 @@ contract StudentsTest is Test{
         vm.deal(applicant, 1 ether);
         vm.prank(applicant);
         vm.expectRevert();
-        address(students).call{value: 1 ether}("");
+        (bool success, ) = address(students).call{value: 1 ether}("");
+        success; // Silence unused variable warning
     }
 
     function testGetBalance() public view {

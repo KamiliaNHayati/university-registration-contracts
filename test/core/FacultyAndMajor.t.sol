@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {Check} from "../../src/libraries/Check.sol";
-import {IFacultyAndMajor} from "../../src/interfaces/IFacultyAndMajor.sol";
 import {FacultyAndMajor} from "../../src/core/FacultyAndMajor.sol";
 import {FacultyAndMajorScript} from "../../script/FacultyAndMajor.s.sol";
-// import {FacultyHelper} from "../helpers/TestFacultyAndMajor.sol";
 
 contract FacultyAndMajorTest is Test{
 

@@ -5,6 +5,8 @@ import {Check} from "../libraries/Check.sol";
 import {IFacultyAndMajor} from "../interfaces/IFacultyAndMajor.sol";
 import {OwnerControlled} from "../access/OwnerControlled.sol";
 
+/// @title Faculty and Major Management Contract
+/// @notice Manages faculties, majors, and student enrollment counts
 contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
 
     // ----------------------------
@@ -51,11 +53,9 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
 
     /* Modifier */
     modifier onlyOwnerOrStudents() {
-    if(msg.sender != owner() && msg.sender != studentsContract) {
-        revert OwnableUnauthorizedAccount(msg.sender);
+        _onlyOwnerOrStudents();
+        _;
     }
-    _;
-}
 
     /* Functions */
     constructor(
@@ -69,6 +69,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     }
 
     /* External functions */
+    /// @notice Add a new faculty to the university
     function addFaculty(string calldata facultyName, string calldata facultyCode) 
         external 
         override
@@ -91,6 +92,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         emit NewFaculty(newFaculty.idFaculty, newFaculty.facultyName, newFaculty.facultyCode);
     }
 
+    /// @notice Update an existing faculty's name or code
     function updateFaculty(
         string calldata facultyName, 
         string calldata newName, 
@@ -123,6 +125,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     }
 
 
+    /// @notice Remove a faculty from the university
     function removeFaculty(string calldata facultyName) external override onlyOwner {
         string memory formattedName = _formatAndValidateName(facultyName);
         
@@ -160,6 +163,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         emit RemoveFaculty(facultyIndex + 1 , formattedName);
     }
 
+    /// @notice Add a new major to an existing faculty
     function addMajor(
         string calldata facultyName, 
         string calldata majorName, 
@@ -197,6 +201,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         emit NewMajor(faculty.idFaculty, major.idMajor, major.majorName, major.majorCode, major.maxEnrollment, enrollmentCost);
     }
 
+    /// @notice Update an existing major's details
     function updateMajor(
         string calldata facultyName, 
         string calldata majorName, 
@@ -387,6 +392,13 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         return getFacultyName;
     }
     
+    /* Internal functions */
+    function _onlyOwnerOrStudents() internal {
+        if(msg.sender != owner() && msg.sender != studentsContract) {
+            revert OwnableUnauthorizedAccount(msg.sender);
+        }
+    }
+
     /* Private functions */
     // Internal helper to reduce stack depth
     function _renameMajor(Faculty storage faculty, string memory oldName, string memory newName) private {

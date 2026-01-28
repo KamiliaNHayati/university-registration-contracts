@@ -1,16 +1,13 @@
-import {Test, console} from "forge-std/Test.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {BokkyPooBahsDateTimeLibrary} from "@bokkypoobahs/contracts/BokkyPooBahsDateTimeLibrary.sol";
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {Test} from "forge-std/Test.sol";
 import {IFacultyAndMajor} from "../../src/interfaces/IFacultyAndMajor.sol";
-import {FacultyAndMajor} from "../../src/core/FacultyAndMajor.sol";
 import {FacultyAndMajorScript} from "../../script/FacultyAndMajor.s.sol";
 import {Students} from "../../src/core/Students.sol";
 import {StudentsScript} from "../../script/Students.s.sol";
 import {Certificate} from "../../src/core/Certificate.sol";
 import {CertificateScript} from "../../script/Certificate.s.sol";
-import {OwnerControlled} from "../../src/access/OwnerControlled.sol";
-import {Check} from "../../src/libraries/Check.sol";
-import {Email} from "../../src/libraries/Email.sol";
 
 contract CertificateTest is Test{
 

@@ -10,6 +10,8 @@ import {OwnerControlled} from "../access/OwnerControlled.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 import {IStudents} from "../interfaces/IStudents.sol";
 
+/// @title Student Enrollment Contract
+/// @notice Manages student enrollment with Chainlink Automation
 contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
 
     // ----------------------------
@@ -121,7 +123,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         }
     }
 
-    // Step 1: Apply (no payment)
+    /// @notice Apply for enrollment in a faculty and major
     function applyForEnrollment(string calldata studentName, string calldata facultyName, string calldata majorName) 
         external  
     {
@@ -132,13 +134,19 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         Check.validateOnlyLettersAndSpaces(facultyName);
         Check.validateOnlyLettersAndSpaces(majorName);
 
-        applications[msg.sender] = Application(msg.sender, studentName, facultyName, majorName, ApplicationStatus.Pending);
+        applications[msg.sender] = Application({
+            applicant: msg.sender, 
+            name: studentName, 
+            faculty: facultyName, 
+            major: majorName, 
+            status: ApplicationStatus.Pending
+        });
         applicantIndex[msg.sender] = pendingApplicants.length;
         pendingApplicants.push(msg.sender);
         emit ApplicationSubmitted(msg.sender);
     }
 
-    // Step 2: Admin approves or rejects
+    /// @notice Approve or reject a student's application
     function updateApplicationStatus(address applicant, ApplicationStatus status) external onlyOwner {
         applications[applicant].status = status;
         if (status == ApplicationStatus.Approved) {
@@ -149,6 +157,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         }
     }
 
+    /// @notice Complete enrollment by paying the required fee
     function enrollStudent() external payable {
         Application storage app = applications[msg.sender];
 
@@ -175,23 +184,24 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         string memory id = generateStudentId(faculty, major);
         string memory validityPeriod = calculateValidityPeriod();
 
-        studentRecords[msg.sender] = Biodata(
-            id, 
-            block.timestamp, 
-            name, 
-            email, 
-            major, 
-            faculty, 
-            1, 
-            StudentStatus.Active, 
-            validityPeriod, 
-            true,
-            0);
-    
+        studentRecords[msg.sender] = Biodata({
+            studentId: id, 
+            enrollmentTime: block.timestamp, 
+            name: name, 
+            email: email, 
+            major: major, 
+            faculty: faculty, 
+            semester: 1, 
+            status: StudentStatus.Active, 
+            validityPeriod: validityPeriod, 
+            hasEnrolled: true,
+            gpa: 0
+        });
         enrolledStudents.push(msg.sender);
         emit StudentEnrolled(id, faculty, major, StudentStatus.Active);
     }
 
+    /// @notice Process a student's dropout request
     function processStudentDropout(string calldata studentName) external {
         Biodata storage studentData = studentRecords[msg.sender];
 
@@ -232,12 +242,14 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         emit ValidityPeriodUpdated(month, day, yearOffset);
     }
 
+    /// @notice Update a student's GPA (stored as 350 = 3.50)
     function updateStudentGPA(address student, uint16 gpa) external onlyOwner {
         if (gpa > 400) revert InvalidGPA(gpa); 
         studentRecords[student].gpa = gpa;
         emit StudentGPAUpdated(student, gpa);
     }
 
+    /// @notice Graduate a student who meets requirements
     function graduateStudent(address student) external onlyOwner {
         if (studentRecords[student].semester < 7) {
             revert NotEligibleForGraduation(student, studentRecords[student].semester);
