@@ -78,6 +78,14 @@ forge coverage
 
 ## 📋 Usage
 
+## 🌐 Deployed Contracts (Sepolia Testnet)
+
+| Contract | Address |
+|----------|---------|
+| FacultyAndMajor | [`0x4862ff14b4e032f9aA68eEA8b21ee96655E33d9c`](https://sepolia.etherscan.io/address/0x4862ff14b4e032f9aA68eEA8b21ee96655E33d9c) |
+| Students | [`0x73D1a473f32b82bD3019d028ee664B5cc9D2F5D1`](https://sepolia.etherscan.io/address/0x73D1a473f32b82bD3019d028ee664B5cc9D2F5D1) |
+| Certificate | [`0xe0187e061DA32222C51c5093c801d835E169D2BA`](https://sepolia.etherscan.io/address/0xe0187e061DA32222C51c5093c801d835E169D2BA) |
+
 ### Deploy Contracts
 
 ```bash
