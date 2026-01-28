@@ -8,8 +8,9 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {BokkyPooBahsDateTimeLibrary} from "@bokkypoobahs/contracts/BokkyPooBahsDateTimeLibrary.sol";
 import {OwnerControlled} from "../access/OwnerControlled.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+import {IStudents} from "../interfaces/IStudents.sol";
 
-contract Students is OwnerControlled, AutomationCompatibleInterface{
+contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
 
     // ----------------------------
     // Type declarations
@@ -48,6 +49,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
         StudentStatus status;
         string validityPeriod;
         bool hasEnrolled;
+        uint16 gpa;  
     }
 
     /* Public State Variables */
@@ -74,6 +76,8 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
     event ApplicationApproved(address applicant);
     event ApplicationRejected(address applicant);
     event ValidityPeriodUpdated(uint8 month, uint8 day, uint8 yearOffset);
+    event StudentGPAUpdated(address indexed student, uint16 gpa);
+    event StudentGraduated(address indexed student, string studentId);
 
     /* Errors */
     error AlreadyEnrolled(address student);
@@ -89,6 +93,9 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
     error NonOnlyOwner();
     error NotApproved();
     error UpkeepNotNeeded();
+    error InvalidGPA(uint16 gpa);
+    error NotEligibleForGraduation(address student, uint8 currentSemester);
+    error GPATooLow(uint16 gpa);
     
     constructor(address _facultyAndMajor, uint8 _minimumMonth, uint8 _maximumMonth, uint8 _validityEndMonth, uint8 _validityEndDay, uint8 _validityYearOffset) {
         facultyAndMajor = IFacultyAndMajor(_facultyAndMajor);
@@ -178,7 +185,8 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
             1, 
             StudentStatus.Active, 
             validityPeriod, 
-            true);
+            true,
+            0);
     
         enrolledStudents.push(msg.sender);
         emit StudentEnrolled(id, faculty, major, StudentStatus.Active);
@@ -210,7 +218,10 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
     }
 
     // Setter
-    function setValidityPeriod(uint8 month, uint8 day, uint8 yearOffset) external onlyOwner {
+    function setValidityPeriod(uint8 month, uint8 day, uint8 yearOffset) 
+        external 
+        onlyOwner 
+    {
         require(month >= 1 && month <= 12, "Invalid month");
         require(day >= 1 && day <= 31, "Invalid day");
         require(yearOffset >= 1 && yearOffset <= 7, "Invalid year offset");
@@ -221,15 +232,31 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
         emit ValidityPeriodUpdated(month, day, yearOffset);
     }
 
+    function updateStudentGPA(address student, uint16 gpa) external onlyOwner {
+        if (gpa > 400) revert InvalidGPA(gpa); 
+        studentRecords[student].gpa = gpa;
+        emit StudentGPAUpdated(student, gpa);
+    }
 
-    /* External functions that are view */
+    function graduateStudent(address student) external onlyOwner {
+        if (studentRecords[student].semester < 7) {
+            revert NotEligibleForGraduation(student, studentRecords[student].semester);
+        }
+        if (studentRecords[student].gpa < 200) {  // Optional: also check GPA
+            revert GPATooLow(studentRecords[student].gpa);
+        }
+        
+        studentRecords[student].status = StudentStatus.Graduate;
+        emit StudentGraduated(student, studentRecords[student].studentId);
+    }
+
     function getStudent() 
         external 
-        view
         returns (string memory, string memory, string memory, string memory, string memory, uint8, StudentStatus, string memory){
         Biodata storage studentData = studentRecords[msg.sender];
         
         uint8 semester = calculateSemester(studentData.enrollmentTime);
+        studentData.semester = semester;
 
         return (
             studentData.studentId,
@@ -243,6 +270,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
         );
     }
 
+    /* External functions that are view */
     // Chainlink Automation calls this to check if upkeep is needed
     function checkUpkeep(bytes calldata) 
         external 
@@ -258,6 +286,14 @@ contract Students is OwnerControlled, AutomationCompatibleInterface{
 
     function getPendingApplicants() external view returns (address[] memory) {
         return pendingApplicants;
+    }
+
+    function hasGraduated(address student) external view returns (bool) {
+        return studentRecords[student].status == StudentStatus.Graduate;
+    }
+
+    function getGPA(address student) external view returns (uint16) {
+        return studentRecords[student].gpa;
     }
 
     function listEnrolledStudents() external view onlyOwner returns (address[] memory) {

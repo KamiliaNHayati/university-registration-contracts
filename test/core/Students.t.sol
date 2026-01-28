@@ -25,6 +25,8 @@ contract StudentsTest is Test{
     event ApplicationApproved(address applicant);
     event ApplicationRejected(address applicant);
     event ValidityPeriodUpdated(uint8 month, uint8 day, uint8 yearOffset);
+    event StudentGPAUpdated(address indexed student, uint16 gpa);
+    event StudentGraduated(address indexed student, string studentId);
 
     /*//////////////////////////////////////////////////////////////
                               STATE
@@ -54,6 +56,19 @@ contract StudentsTest is Test{
 
         vm.prank(owner);
         facultyAndMajor.setStudentsContract(address(students));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              HELPER FUNCTION
+    //////////////////////////////////////////////////////////////*/
+    function _setupAndOpenEnrollment() internal {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.warp(1750003200);
+        students.performUpkeep("");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -100,14 +115,7 @@ contract StudentsTest is Test{
     }
 
     function testApplyForEnrollment_WhereStudentNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -119,14 +127,7 @@ contract StudentsTest is Test{
     }
 
     function testApplyForEnrollment_WhereFacultyNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -138,14 +139,7 @@ contract StudentsTest is Test{
     }
 
     function testApplyForEnrollment_WhereMajorNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -157,17 +151,10 @@ contract StudentsTest is Test{
     }
 
     function testApplyForEnrollment_EmitsEvent() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.expectEmit(false, false, false, true, address(students));
-        emit ApplicationSubmitted(address(applicant));
+        emit ApplicationSubmitted(applicant);
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
@@ -180,23 +167,16 @@ contract StudentsTest is Test{
                             UPDATEAPPLICATIONSTATUS
     //////////////////////////////////////////////////////////////*/
     function testUpdateApplicationStatus_StatusApproved() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.expectEmit(false, false, false, true, address(students));
-        emit ApplicationApproved(address(applicant));
+        emit ApplicationApproved(applicant);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         (, , , , Students.ApplicationStatus status) = students.applications(applicant);
         assert(status == Students.ApplicationStatus.Approved);
@@ -206,23 +186,16 @@ contract StudentsTest is Test{
     }
 
     function testUpdateApplicationStatus_StatusRejected() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+       _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.expectEmit(false, false, false, true, address(students));
-        emit ApplicationRejected(address(applicant));
+        emit ApplicationRejected(applicant);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Rejected);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Rejected);
 
         (, , , , Students.ApplicationStatus status) = students.applications(applicant);
         assert(status == Students.ApplicationStatus.Rejected);
@@ -232,14 +205,7 @@ contract StudentsTest is Test{
                             ENROLLSTUDENT
     //////////////////////////////////////////////////////////////*/
     function testEnrollStudent_RevertsWhenApplicationNotApproved() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
@@ -250,20 +216,13 @@ contract StudentsTest is Test{
     }
 
     function testEnrollStudent_RevertsWhenNotEnrolledInTime() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.warp(1795490000);
         students.performUpkeep("");
@@ -274,20 +233,13 @@ contract StudentsTest is Test{
     }
 
     function testEnrollStudent_RevertsWhenAlreadyEnrolled() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -298,20 +250,13 @@ contract StudentsTest is Test{
     }
 
     function testEnrollStudent_RevertsWhenNotSendWithTheSameAmount() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         vm.expectRevert(abi.encodeWithSelector(Students.InvalidPaymentAmount.selector, cost - 0.2 ether, cost));
@@ -319,14 +264,7 @@ contract StudentsTest is Test{
     }
 
     function testEnrollStudent_StudentEnrolledWith10Students() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         for(uint i = 1; i <= 10; i++) {
             address student = address(uint160(i));
@@ -342,14 +280,7 @@ contract StudentsTest is Test{
     }
 
     function testEnrollStudent_StudentEnrolledWith100Students() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         for(uint i = 1; i <= maxEnrollment; i++) {
             address student = address(uint160(i));
@@ -365,14 +296,7 @@ contract StudentsTest is Test{
     }    
 
     function testEnrollStudent_WithDifferentValidityMonths() public{
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         for(uint8 i = 1; i <= 12; i++) {
             vm.prank(owner);
@@ -394,20 +318,13 @@ contract StudentsTest is Test{
     }
 
     function testEnrollStudent_EmitsEvents() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         string memory id = string.concat(facultyCode, majorCode, "001");
         vm.expectEmit(false, false, false, true, address(students));
@@ -427,20 +344,13 @@ contract StudentsTest is Test{
     }
 
     function testProcessStudentDropout_WhenStudentNameIsNotMatch() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -451,20 +361,13 @@ contract StudentsTest is Test{
     }
 
     function testProcessStudentDropOut_WhenStudentHasDroppedOut() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -478,20 +381,13 @@ contract StudentsTest is Test{
     }
 
     function testProcessStudentDropout_EmitsEvents() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -533,25 +429,129 @@ contract StudentsTest is Test{
         students.setValidityPeriod(12, 31, 4);
     }
 
-
     /*//////////////////////////////////////////////////////////////
-                                GETTER TESTS
+                            UPDATESTUDENTGPA
     //////////////////////////////////////////////////////////////*/
-    function testGetStudent() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
 
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+    function testUpdateStudentGPA_RevertsInvalidGPA() public {
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Students.InvalidGPA.selector, 450));
+        students.updateStudentGPA(applicant, 450);
+    }
+
+    function testUpdateStudentGPA_EmitsEvents() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true, address(students));
+        emit StudentGPAUpdated(applicant, 200);
+        students.updateStudentGPA(applicant, 200);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            GRADUATESTUDENT
+    //////////////////////////////////////////////////////////////*/
+
+    function testGraduateStudent_RevertsWhenNotEligible() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Students.NotEligibleForGraduation.selector, applicant, 1));
+        students.graduateStudent(applicant);
+    }
+
+    function testGraduateStudent_RevrtsWhenGPATooLow() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        students.updateStudentGPA(applicant, 180);
+
+        vm.warp(1851083008);
+        vm.prank(applicant);
+        (, , , , , uint8 semester, , ) = students.getStudent();
+        assertTrue(semester >= 7);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Students.GPATooLow.selector, 180));
+        students.graduateStudent(applicant);
+    }
+
+    function testGraduateStudent_EmitsEvents() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        students.updateStudentGPA(applicant, 380);
+
+        vm.warp(1851083008);
+        vm.prank(applicant);
+        (, , , , , uint8 semester, , ) = students.getStudent();
+        assertTrue(semester >= 7);
+
+        string memory id = string.concat(facultyCode, majorCode, "001");
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true, address(students));
+        emit StudentGraduated(applicant, id);
+        students.graduateStudent(applicant);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                                GETTER TESTS
+    //////////////////////////////////////////////////////////////*/
+    function testGetStudent() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -573,14 +573,7 @@ contract StudentsTest is Test{
     }
 
     function testGetPendingApplicants() public{
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
@@ -589,21 +582,60 @@ contract StudentsTest is Test{
         assertEq(pendingApplicants.length, 1);
     }
 
-    function testListEnrolledStudents() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
-        vm.warp(1750003200);
-        students.performUpkeep("");
+    function testHasGraduated() public {
+        _setupAndOpenEnrollment();
 
         vm.prank(applicant);
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(address(applicant), Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        students.updateStudentGPA(applicant, 380);
+
+        vm.warp(1851083008);
+        vm.prank(applicant);
+        (, , , , , uint8 semester, , ) = students.getStudent();
+        assertEq(semester, 7);
+
+        vm.prank(owner);
+        students.graduateStudent(applicant);
+
+        vm.prank(owner);
+        assertEq(students.hasGraduated(applicant), true);
+    }
+
+    function testGetGPA() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+
+        vm.prank(applicant);
+        students.enrollStudent{value: cost}();
+
+        vm.prank(owner);
+        students.updateStudentGPA(applicant, 380);
+
+        vm.prank(owner);
+        assertEq(students.getGPA(applicant), 380);
+    }
+
+    function testListEnrolledStudents() public {
+        _setupAndOpenEnrollment();
+
+        vm.prank(applicant);
+        students.applyForEnrollment(studentName, facultyName, majorName);
+
+        vm.prank(owner);
+        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -658,7 +690,7 @@ contract StudentsTest is Test{
         address(students).call{value: 1 ether}("");
     }
 
-    function testGetBalance() public {
+    function testGetBalance() public view {
         assertEq(students.getBalance(), 0);
     }
 
