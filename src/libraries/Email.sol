@@ -6,15 +6,17 @@ library Email {
     // // // The code has been slightly modified
 
     function toLowercase(string memory inputNonModifiable) internal pure returns (string memory) {
-        bytes memory input = bytes(inputNonModifiable);
+        bytes memory original = bytes(inputNonModifiable);
+        bytes memory result = new bytes(original.length);  // Create NEW copy
 
-        for (uint i = 0; i < input.length; i++) {   
-
-            if(input[i] >= "A" && input[i] <= "Z"){
-                input[i] = bytes1(uint8(input[i]) + 32);
+        for (uint i = 0; i < original.length; i++) {   
+            if(original[i] >= "A" && original[i] <= "Z"){
+                result[i] = bytes1(uint8(original[i]) + 32);
+            } else {
+                result[i] = original[i];
             }
         }
-        return string(input);
+        return string(result);
     }
 
     function convertSpacesToDots(string memory inputNonModifiable) internal pure returns (string memory) {

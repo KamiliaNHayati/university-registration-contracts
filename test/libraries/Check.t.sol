@@ -1,32 +1,41 @@
-// SPDX-License-Identifier:MIT
+// test/libraries/Check.t.sol
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console} from "forge-std/Test.sol";
-import {BokkyPooBahsDateTimeLibrary} from "@bokkypoobahs/contracts/BokkyPooBahsDateTimeLibrary.sol";
-import {CheckTest} from "../helpers/TestCheck.sol";
+import {Test} from "forge-std/Test.sol";
+import {Check} from "../../src/libraries/Check.sol";
 
-contract CheckTest2 is Test{
+// Wrapper contract to make library calls "real" calls
+contract CheckWrapper {
+    function validateOnlyLettersAndSpaces(string memory input) external pure {
+        Check.validateOnlyLettersAndSpaces(input);
+    }
+}
+
+contract CheckTest is Test {
+    CheckWrapper wrapper;
     
-    CheckTest public checkTest;
-
     function setUp() public {
-        checkTest = new CheckTest();
+        wrapper = new CheckWrapper();
     }
-
-    function testCompareStrings() public view {
-        assertEq(checkTest.testCompareStrings("Rizky", "Rizky"), true);
+    
+    function testCapitalizeFirstLetters() public pure {
+        assertEq(Check.capitalizeFirstLetters("john doe"), "John Doe");
+        assertEq(Check.capitalizeFirstLetters("JOHN DOE"), "John Doe");
+        assertEq(Check.capitalizeFirstLetters("john"), "John");
     }
-
-    function testCheckCapitalLetters() public view {
-        assertEq(checkTest.testCapitalizeFirstLetters("Rizky"), "Rizky");
+    
+    function testValidateOnlyLettersAndSpaces_Valid() public view {
+        wrapper.validateOnlyLettersAndSpaces("John Doe");  // Should not revert
     }
-
-    function testMiddleDigitsNum() public view {
-        (bool result, ) = checkTest.testValidateMiddleDigits("12345");
-        assertEq(result, false);
+    
+    function testValidateOnlyLettersAndSpaces_InvalidNumber() public {
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "John123"));
+        wrapper.validateOnlyLettersAndSpaces("John123");  // Call through wrapper
     }
-
-    function testStringToUint() public view {
-        assertEq(checkTest.testStringToUint("123456"), 123456);
+    
+    function testValidateOnlyLettersAndSpaces_Empty() public {
+        vm.expectRevert(Check.EmptyInput.selector);
+        wrapper.validateOnlyLettersAndSpaces("");  // Call through wrapper
     }
 }

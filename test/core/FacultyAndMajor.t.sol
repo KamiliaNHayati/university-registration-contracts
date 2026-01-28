@@ -1,124 +1,1001 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {Check} from "../../src/libraries/Check.sol";
 import {IFacultyAndMajor} from "../../src/interfaces/IFacultyAndMajor.sol";
 import {FacultyAndMajor} from "../../src/core/FacultyAndMajor.sol";
-import {FacultyHelper} from "../helpers/TestFacultyAndMajor.sol";
+import {FacultyAndMajorScript} from "../../script/FacultyAndMajor.s.sol";
+// import {FacultyHelper} from "../helpers/TestFacultyAndMajor.sol";
 
-contract FacultyAndMajorTest is Test {
+contract FacultyAndMajorTest is Test{
+
+    /*//////////////////////////////////////////////////////////////
+                              EVENT
+    //////////////////////////////////////////////////////////////*/
+    event NewFaculty(uint indexed facultyId, string facultyName, string facultyCode);
+    event UpdateFaculty(uint indexed facultyId, string oldName, string newName, string newFacultyCode);
+    event RemoveFaculty(uint indexed facultyId, string facultyName);
+
+    event NewMajor(uint indexed facultyId, uint indexed majorId, string majorName, string majorCode, uint16 maxEnrollment, uint cost);
+    event UpdateMajor(uint indexed facultyId, uint indexed majorId, string oldName, string newName, string newMajorCode, uint16 newMaxEnrollment, uint newCost);
+    event RemoveMajor(uint indexed facultyId, uint indexed majorId, string majorName);
+
+    event MaxLengthFacultyCodeUpdated(uint32);
+    event MaxLengthMajorCodeUpdated(uint32);
+    event StudentsContractUpdated(address indexed studentsContract);
+    /*//////////////////////////////////////////////////////////////
+                              STATE
+    //////////////////////////////////////////////////////////////*/
     FacultyAndMajor public facultyAndMajor;
-    // FacultyHelper public facultyAndMajor;
+    string facultyName = "School of Computing";
+    string formattedName = Check.capitalizeFirstLetters(facultyName);
+    string newFacultyName = "School of Engineering";
+    string formattedNewFacultyName = Check.capitalizeFirstLetters(newFacultyName);
+    string facultyCode = "1200";
+    string newFacultyCode = "1300";
+    string majorName = "Information Technology";
+    string formattedMajorName = Check.capitalizeFirstLetters(majorName);
+    string newMajorName = "Cyber Security";
+    string formattedNewMajorName = Check.capitalizeFirstLetters(newMajorName);
+    string majorCode = "1201";
+    string newMajorCode = "1202";
+    uint16 maxEnrollment = 100;
+    uint cost = 0.8 ether;
+    address public owner;
 
     function setUp() public {
-        facultyAndMajor = new FacultyAndMajor();
-        // facultyAndMajor = new FacultyHelper();
+        FacultyAndMajorScript facultyAndMajorScript = new FacultyAndMajorScript();
+        facultyAndMajor = facultyAndMajorScript.run("Nusantara University", 4, 4);
+
+        owner = facultyAndMajor.owner();
     }
 
-    function testAddFaculty() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addFaculty("Fakultas Agama Islam", "FAI");
-        assertEq(facultyAndMajor.listFaculties().length, 2);
+    /*//////////////////////////////////////////////////////////////
+                              ADD FACULTY
+    //////////////////////////////////////////////////////////////*/
+
+    function testAddFaculty_RevertsWhenFacultyNameIsInvalid() public {
+        vm.expectRevert(Check.EmptyInput.selector);
+        vm.prank(owner);
+        facultyAndMajor.addFaculty("", "123");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));  
+        facultyAndMajor.addFaculty("123", "123");
     }
 
-    function testUpdateFaculty() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.updateFaculty("Fakultas Teknik", "Fakultas Ilmu Komputer", "FIK");
-        assertEq(facultyAndMajor.listFaculties().length, 1, "Should have 1 major in the faculty");
+    function testAddFaculty_Success() public {
+        vm.prank(owner); 
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+        assertEq(facultyAndMajor.listFaculties().length, 1);
     }
 
-    function testRemoveFaculty() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.removeFaculty("Fakultas Teknik");
+    function testAddFaculty_WhenFacultyAlreadyExist() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyAlreadyExists.selector, formattedName));
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+    }
+
+    function testAddFaculty_WhenFacultyCodeIsLessThan4() public {
+        vm.prank(owner);
+        vm.expectRevert(Check.TooShortCode.selector);  
+        facultyAndMajor.addFaculty(facultyName, "120");
+    }
+    
+    function testAddFaculty_WhenFacultyCodeIsMoreThan4() public {
+        vm.prank(owner);
+        vm.expectRevert(Check.TooLongCode.selector);  
+        facultyAndMajor.addFaculty(facultyName, "12000");
+    }
+
+    function testAddFaculty_StoresFacultyCode() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        assertEq(facultyAndMajor.getFacultyCode(formattedName), facultyCode);
+    }
+
+    function testAddFaculty_EmitsEvent() public {
+        vm.expectEmit(true, false, false, true, address(facultyAndMajor));
+        emit NewFaculty(1, formattedName, facultyCode);        
+        
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           UPDATE FACULTY
+    //////////////////////////////////////////////////////////////*/
+
+    function testUpdateFaculty_WhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);  // Add valid faculty first
+
+        vm.expectRevert(Check.EmptyInput.selector);
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty("", newFacultyName, newFacultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));  
+        facultyAndMajor.updateFaculty("123", newFacultyName, newFacultyCode);  // First param invalid
+    }
+
+    function testUpdateFacultyReverts_WhenNewNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);  // Add valid faculty first
+        
+        vm.expectRevert(Check.EmptyInput.selector);
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, "", newFacultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));  
+        facultyAndMajor.updateFaculty(facultyName, "123", newFacultyCode);  // Second param invalid
+    }
+
+    function testUpdateFaculty_Success() public {
+        vm.prank(owner); 
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, newFacultyName, newFacultyCode);
+        assertEq(facultyAndMajor.getFacultyCode(formattedNewFacultyName), newFacultyCode);
+    }
+
+    function testUpdateFaculty_WhenFacultyNotExist() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
+        facultyAndMajor.updateFaculty(facultyName, newFacultyName, newFacultyCode);
+    }
+
+    function testUpdateFaculty_UpdatesExistingFaculty() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(formattedName, newFacultyName, newFacultyCode);
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties[0], formattedNewFacultyName);
+        assertEq(facultyAndMajor.getFacultyCode(formattedNewFacultyName), newFacultyCode);
+    }
+
+    function testUpdateFaculty_RevertsWhenCodeTooShort() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.TooShortCode.selector);
+        facultyAndMajor.updateFaculty(facultyName, "Engineering", "130");
+    }
+
+    function testUpdateFaculty_RevertsWhenCodeTooLong() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.TooLongCode.selector);
+        facultyAndMajor.updateFaculty(facultyName, "Engineering", "13000");
+    }
+
+    function testUpdateFaculty_OnlyChangesCode() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, "Engineering", facultyCode);
+
+        assertEq(facultyAndMajor.getFacultyCode("Engineering"), facultyCode);
+    }
+
+    function testUpdateFaculty_NoChanges() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, facultyName, facultyCode);
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties[0], formattedName);
+        assertEq(facultyAndMajor.getFacultyCode(formattedName), facultyCode);
+    }
+
+    function testUpdateFaculty_NewNameAndCode() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, newFacultyName, facultyCode);
+
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties[0], formattedNewFacultyName);
+        assertEq(facultyAndMajor.getFacultyCode(formattedNewFacultyName), facultyCode);
+    }
+
+    function testUpdateFaculty_NewName() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, newFacultyName, facultyCode);
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties[0], formattedNewFacultyName);
+        assertEq(facultyAndMajor.getFacultyCode(formattedNewFacultyName), facultyCode);
+    }
+
+    function testUpdateFaculty_NewCode() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, facultyName, newFacultyCode);
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties[0], formattedName);
+        assertEq(facultyAndMajor.getFacultyCode(formattedName), newFacultyCode);
+    }
+
+    function testUpdateFaculty_EmitsEvent() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.expectEmit(true, false, false, true, address(facultyAndMajor));
+        emit UpdateFaculty(1, formattedName, formattedNewFacultyName, newFacultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.updateFaculty(facultyName, newFacultyName, newFacultyCode);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              REMOVE FACULTY
+    //////////////////////////////////////////////////////////////*/
+
+    function testRemoveFaculty_RevertsWhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.removeFaculty("");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));  
+        facultyAndMajor.removeFaculty("123");
+    }
+
+    function testRemoveFaculty_Success() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+        
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(facultyName);
+
         assertEq(facultyAndMajor.listFaculties().length, 0);
     }
 
-    function testAddMajor() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
+    function testRemoveFaculty_WhenFacultyNotExist() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
+        facultyAndMajor.removeFaculty(facultyName);
+    }
+
+    function testRemoveFaculty_RevertsWhenHasMajors() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
         
-        string[] memory majors = facultyAndMajor.listMajors("Fakultas Teknik");
-        console.log("After adding major - Number of majors:", majors.length);
-        if (majors.length > 0) {
-            console.log("First major name:", majors[0]);
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName,majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorAlreadyExists.selector, "Faculty still has majors"));
+        facultyAndMajor.removeFaculty(facultyName);
+    }
+
+    function testRemoveFaculty_SuccessWhenNoMajors() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(facultyName);
+        assertEq(facultyAndMajor.listFaculties().length, 0);
+    }
+
+    function testRemoveFacultyWhenTheFacultyInTheLastIndex() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(newFacultyName, newFacultyCode);
+
+        vm.recordLogs();
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(newFacultyName);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 facultyIndex = entries[0].topics[1];
+
+        assertEq(uint256(facultyIndex), 2);
+    }
+
+    function testRemoveFaculty_SwapVerification() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);  // Will be at index 0
+        
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(newFacultyName, newFacultyCode);  // Will be at index 1
+    
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(facultyName);  // Remove first, second moves to index 0
+    
+        // Verify the swap worked correctly
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties.length, 1);
+        assertEq(faculties[0], formattedNewFacultyName);  // Second faculty now at index 0
+    }
+
+    function testRemoveFacultyWhenTheFacultyNotInTheLastIndex() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(newFacultyName, newFacultyCode);
+
+        vm.recordLogs();
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(facultyName);
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 facultyIndex = entries[0].topics[1];
+
+        assertEq(uint256(facultyIndex), 1);
+    }
+
+    function testRemoveFaculty_EmitsEvent() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.expectEmit(true, false, false, true, address(facultyAndMajor));
+        emit RemoveFaculty(1, formattedName);
+
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(facultyName);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              ADD MAJOR
+    //////////////////////////////////////////////////////////////*/
+    function testAddMajor_WhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.addMajor("", majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.addMajor("123", majorName, majorCode, maxEnrollment, cost);
+    }
+
+    function testAddMajor_WhenFacultyNameOnlyLettersAndSpace() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        assertEq(facultyAndMajor.listMajors(facultyName).length, 1);
+    }
+
+    function testAddMajor_WhenMajorNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.addMajor(facultyName, "123", majorCode, maxEnrollment, cost);
+    }
+
+    function testAddMajor_WhenMajorNameOnlyLettersAndSpace() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        assertEq(facultyAndMajor.listMajors(facultyName).length, 1);
+    }
+
+    function testAddMajor_WhenFacultyNotFound() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+    }
+
+    function testAddMajor_WhenFacultyExist() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        uint256 majorCostResult = facultyAndMajor.getMajorCost(facultyName, majorName);
+        assertEq(majorCostResult, cost);
+    }
+
+    function testAddMajor_WhenMajorAlreadyExist() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorAlreadyExists.selector, formattedMajorName));
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+    }
+
+    function testAddMajor_WhenLengthMajorCodeIsMoreThan4() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.TooLongCode.selector);
+        facultyAndMajor.addMajor(facultyName, majorName, "12345", maxEnrollment, cost);
+    }
+
+    function testAddMajor_WhenLengthMajorCodeIsLessThan4() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.TooShortCode.selector);
+        facultyAndMajor.addMajor(facultyName, majorName, "123", maxEnrollment, cost);
+    }
+
+    function testAddMajor_OnlyChangesCode() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        string memory majorCodeResult = facultyAndMajor.getMajorCode(facultyName, majorName);
+        assertEq(majorCodeResult, majorCode);
+    }
+
+    function testAddMajor_EmitsEvent() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.expectEmit(true, false, false, true, address(facultyAndMajor));
+        emit NewMajor(1, 1, formattedMajorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              UPDATE MAJOR
+    //////////////////////////////////////////////////////////////*/
+    function testUpdateMajor_WhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.updateMajor("", majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.updateMajor("123", majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+    }
+
+    function testUpdateMajor_WhenMajorNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.updateMajor(facultyName, "", newMajorName, newMajorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.updateMajor(facultyName, "123", newMajorName, newMajorCode, maxEnrollment, cost);
+    }
+
+    function testUpdateMajor_WhenMajorNameOnlyLettersAndSpace() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+        
+        uint256 majorCostResult = facultyAndMajor.getMajorCost(facultyName, newMajorName);
+        assertEq(majorCostResult, cost);
+    }
+
+    function testUpdateMajor_WhenLengthMajorCodeIsMoreThan4() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.TooLongCode.selector);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, "12345", maxEnrollment, cost);
+    }
+
+    function testUpdateMajor_WhenLengthMajorCodeIsLessThan4() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.TooShortCode.selector);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, "123", maxEnrollment, cost);
+    }
+
+    function testUpdateMajor_OnlyChangesCode() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+
+        string memory majorCodeResult = facultyAndMajor.getMajorCode(facultyName, newMajorName);
+        assertEq(majorCodeResult, newMajorCode);
+    }
+
+    function testUpdateMajor_WhenFacultyNotExist() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedNewFacultyName));
+        facultyAndMajor.updateMajor(newFacultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+    }
+
+    function testUpdateMajor_WhenFacultyExist() public{
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+        assertEq(facultyAndMajor.listMajors(facultyName).length, 1);        
+    }
+
+    function testUpdateMajor_WhenMajorNotExist() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorNotFound.selector, formattedNewMajorName));
+        facultyAndMajor.updateMajor(facultyName, newMajorName, newMajorName, newMajorCode, maxEnrollment, cost);
+    }
+
+    function testUpdateMajor_WhenMajorNameDifferentThanBefore() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.recordLogs();
+        vm.prank(owner);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        Vm.Log memory log = entries[0];
+        (string memory majorNameBefore, string memory majorNameAfter, , ,) = abi.decode(
+            log.data, 
+            (string, string, string, uint16, uint)
+        );
+
+        assertNotEq(majorNameBefore, majorNameAfter);
+    }
+
+    function testUpdateMajor_WhenMajorNameSameAsBefore() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.recordLogs();
+        vm.prank(owner);
+        facultyAndMajor.updateMajor(facultyName, majorName, majorName, majorCode, maxEnrollment, cost);
+
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        Vm.Log memory log = entries[0];
+        (string memory majorNameBefore, string memory majorNameAfter, , ,) = abi.decode(
+            log.data, 
+            (string, string, string, uint16, uint)
+        );
+
+        assertEq(majorNameBefore, majorNameAfter);
+    }
+
+    function testUpdateMajor_EmitsEvent() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.expectEmit(true, false, false, true, address(facultyAndMajor));
+        emit UpdateMajor(1, 1, formattedMajorName, formattedNewMajorName, newMajorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              REMOVE MAJOR
+    //////////////////////////////////////////////////////////////*/
+    function testRemoveMajor_WhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.removeMajor("", majorName);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.removeMajor("123", majorName);
+    }
+
+    function testRemoveMajor_WhenMajorNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.removeMajor(facultyName, "");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.removeMajor(facultyName, "123");
+    }
+
+    function testRemoveMajor_WhenMajorNameOnlyLettersAndSpace() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.removeMajor(facultyName, majorName);
+
+        assertEq(facultyAndMajor.listMajors(facultyName).length, 0);
+    }
+
+    function testRemoveMajor_WhenFacultyNotFound() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
+        facultyAndMajor.removeMajor(facultyName, majorName);
+    }
+
+    function testRemoveMajor_WhenMajorNotFound() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorNotFound.selector, formattedMajorName));
+        facultyAndMajor.removeMajor(facultyName, majorName);
+    }
+
+    function testRemoveMajor_WhenStillHasStudents() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.incrementStudentCount(formattedName, formattedMajorName);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.HasExistingStudents.selector, "Major still has students"));
+        facultyAndMajor.removeMajor(facultyName, majorName);
+    }
+
+    function testRemoveMajor_WhenThereIsNoStudents() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.removeMajor(facultyName, majorName);
+
+        assertEq(facultyAndMajor.listMajors(facultyName).length, 0);
+    }
+
+    function testRemoveMajor_EmitsEvent() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.expectEmit(true, false, false, true, address(facultyAndMajor));
+        emit RemoveMajor(1, 1, formattedMajorName);
+
+        vm.prank(owner);
+        facultyAndMajor.removeMajor(facultyName, majorName);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET LENGTH FACULTY CODE
+    //////////////////////////////////////////////////////////////*/
+
+    function testSetLengthFacultyCode_WhenLengthIsLessThanMinLength() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.InvalidLengthFacultyCode.selector, 1));
+        facultyAndMajor.setLengthFacultyCode(1);
+    }
+
+    function testSetLengthFacultyCode_WhenLengthIsMoreThanMaxLength() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.InvalidLengthFacultyCode.selector, 11));
+        facultyAndMajor.setLengthFacultyCode(11);
+    }
+
+    function testSetLengthFacultyCode_EmitsEvent() public {
+        vm.expectEmit(true, false, false, false, address(facultyAndMajor));
+        emit MaxLengthFacultyCodeUpdated(5);
+
+        vm.prank(owner);
+        facultyAndMajor.setLengthFacultyCode(5);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET LENGTH MAJOR CODE
+    //////////////////////////////////////////////////////////////*/
+
+    function testSetLengthMajorCode_WhenLengthIsLessThanMinLength() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.InvalidLengthMajorCode.selector, 1));
+        facultyAndMajor.setLengthMajorCode(1);
+    }
+
+    function testSetLengthMajorCode_WhenLengthIsMoreThanMaxLength() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.InvalidLengthMajorCode.selector, 11));
+        facultyAndMajor.setLengthMajorCode(11);
+    }
+
+    function testSetLengthMajorCode_EmitsEvent() public {
+        vm.expectEmit(true, false, false, false, address(facultyAndMajor));
+        emit MaxLengthMajorCodeUpdated(5);
+
+        vm.prank(owner);
+        facultyAndMajor.setLengthMajorCode(5);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        SET STUDENTS CONTRACT
+    //////////////////////////////////////////////////////////////*/
+
+    function testSetStudentsContract_EmitsEvents() public {
+        vm.expectEmit(true, false, false, false, address(facultyAndMajor));
+        emit StudentsContractUpdated(address(1));
+
+        vm.prank(owner);
+        facultyAndMajor.setStudentsContract(address(1));
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        INCREMENT STUDENT COUNT
+    //////////////////////////////////////////////////////////////*/
+    function testIncrementStudentCount_WhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.incrementStudentCount("", majorName);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.incrementStudentCount("123", majorName);
+    }
+
+    function testIncrementStudentCount_WhenMajorNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.incrementStudentCount(facultyName, "");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.incrementStudentCount(facultyName, "123");
+    }
+
+    function testIncrementStudentCount_WhenMajorNameOnlyLettersAndSpace() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
+
+        (, , , uint16 enrolledCountResult, ) = facultyAndMajor.getMajorDetails(facultyName, majorName);
+        assertEq(enrolledCountResult, 1);
+    }
+
+    function testIncrementStudentCount_WhenFacultyNotFound() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
+    }
+
+    function testIncrementStudentCount_WhenMajorNotFound() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorNotFound.selector, formattedMajorName));
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
+    }
+
+    function testIncrementStudentCount_WhenEnrolledCountIsMoreThanMaxEnrollment() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        for(uint i = 0; i < maxEnrollment; i++) {
+            vm.prank(owner);
+            facultyAndMajor.incrementStudentCount(facultyName, majorName);
         }
-        // Assertions
-        assertGt(majors.length, 0, "Should have at least one major");
-        assertEq(majors[0], "Teknik Informatika", "Major name should match");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MaxEnrollmentReached.selector));
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
     }
 
-    function testUpdateMajor() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        facultyAndMajor.updateMajor("Fakultas Teknik", "Teknik Informatika", "Sistem Informasi", "1080", 100);
-        assertEq(facultyAndMajor.listMajors("Fakultas Teknik").length, 1);
+    function testIncrementStudentCount_Success() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
+
+        (, , , uint16 enrolledCountResult, ) = facultyAndMajor.getMajorDetails(facultyName, majorName);
+        assertEq(enrolledCountResult, 1);
     }
 
-    function testRemoveMajor() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        facultyAndMajor.removeMajor("Fakultas Teknik", "Teknik Informatika");
-        assertEq(facultyAndMajor.listMajors("Fakultas Teknik").length, 0);
+    /*//////////////////////////////////////////////////////////////
+                        DECREMENT STUDENT COUNT
+    //////////////////////////////////////////////////////////////*/
+
+    function testDecrementStudentCount_WhenFacultyNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.decrementStudentCount("", majorName);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.decrementStudentCount("123", majorName);
     }
 
-    function testGetAbbreviation() public{
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        assertEq(facultyAndMajor.getAbbreviation("Fakultas Teknik"), "FT");
+    function testDecrementStudentCount_WhenMajorNameIsInvalid() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(Check.EmptyInput.selector);
+        facultyAndMajor.decrementStudentCount(facultyName, "");
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(Check.OnlyLettersAndSpaces.selector, "123"));
+        facultyAndMajor.decrementStudentCount(facultyName, "123");
     }
 
-    function testGetMiddleNumOfTheMajor() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        assertEq(Check.stringToUint(facultyAndMajor.getMajorMiddleNum("Fakultas Teknik", "Teknik Informatika")), 1408);
+    function testDecrementStudentCount_WhenMajorNameOnlyLettersAndSpace() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
+
+        (, , , uint16 enrolledCountResult, ) = facultyAndMajor.getMajorDetails(facultyName, majorName);
+        assertEq(enrolledCountResult, 1);
     }
 
-    function testCostAnotherContract() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        assertEq(facultyAndMajor.getMajorCost("Fakultas Teknik", "Teknik Informatika"), 100);
+    function testDecrementStudentCount_WhenFacultyNotFound() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
+        facultyAndMajor.decrementStudentCount(facultyName, majorName);
     }
 
-    function testIncreaseStudentCount() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        facultyAndMajor.incrementStudentCount("Fakultas Teknik", "Teknik Informatika");
-        (, , , uint16 studentCount, ) = facultyAndMajor.getMajorDetails("Fakultas Teknik", "Teknik Informatika");
-        assertEq(studentCount, 1);
-    } 
+    function testDecrementStudentCount_WhenMajorNotFound() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
 
-    function testDecreaseStudentCount() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        facultyAndMajor.incrementStudentCount("Fakultas Teknik", "Teknik Informatika");
-        facultyAndMajor.decrementStudentCount("Fakultas Teknik", "Teknik Informatika");
-        (, , , uint16 studentsCount, ) = facultyAndMajor.getMajorDetails("Fakultas Teknik", "Teknik Informatika");
-        assertEq(studentsCount, 0);    
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorNotFound.selector, formattedMajorName));
+        facultyAndMajor.decrementStudentCount(facultyName, majorName);
     }
 
-    function testGetMajorOfTheFaculty() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addMajor("Fakultas Teknik", "Teknik Informatika", "1408", 100);
-        facultyAndMajor.addMajor("Fakultas Teknik", "Sistem Informasi", "1409", 100);
-        assertEq(facultyAndMajor.listMajors("Fakultas Teknik").length, 2);
+    function testDecrementStudentCount_WhenEnrolledCountIsZero() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.EnrolledCountCannotBeLessThanZero.selector));
+        facultyAndMajor.decrementStudentCount(facultyName, majorName);
     }
 
-    function testGetAllFaculty() public {
-        facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        facultyAndMajor.addFaculty("Fakultas Ilmu Komputer", "FIK");
-        assertEq(facultyAndMajor.listFaculties().length, 2);
+    function testDecrementStudentCount_Success() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+
+        vm.prank(owner);
+        facultyAndMajor.incrementStudentCount(facultyName, majorName);
+
+        (, , , uint16 enrolledCountResult, ) = facultyAndMajor.getMajorDetails(facultyName, majorName);
+        assertEq(enrolledCountResult, 1);
     }
-
-    // function testRevertOnInvalidMiddleDigits() public {
-    //     facultyAndMajor.addFaculty("Fakultas Teknik", "FT");
-        
-    //     // Test for too short middle digits
-    //     vm.expectRevert("Input terlalu pendek");
-    //     facultyAndMajor.addMajor("Fakultas Teknik", "Sistem Informasi", "230", 100);
-
-    //     // Test for too long middle digits
-    //     vm.expectRevert("Input terlalu panjang");
-    //     facultyAndMajor.addMajor("Fakultas Teknik", "Sistem Informasi", "23011", 100);
-    // }
 }        

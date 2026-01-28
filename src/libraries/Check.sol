@@ -5,7 +5,7 @@ import "@bokkypoobahs/contracts/BokkyPooBahsDateTimeLibrary.sol";
 
 library Check {
 
-    error OnlyLettersAndSpaces();
+    error OnlyLettersAndSpaces(string input);
     error EmptyInput();
     error TooLongCode();
     error TooShortCode();
@@ -17,9 +17,6 @@ library Check {
     function capitalizeFirstLetters(string memory name) internal pure returns (string memory) {
         bytes memory b = bytes(name);
         bool capitalizeNext = true;
-        
-        // Check empty first
-        if (b.length == 0) revert EmptyInput();
         
         // Then check characters
         for (uint i = 0; i < b.length; i++) {
@@ -37,7 +34,7 @@ library Check {
         return string(b);
     }
 
-    function validateLengthCode(string memory inputCode, uint32 maxLength) internal pure returns (bool isValid) {
+    function validateLengthCode(string memory inputCode, uint8 maxLength) internal pure returns (bool isValid) {
         bytes memory code = bytes(inputCode);
         uint length = code.length;
         
@@ -49,9 +46,12 @@ library Check {
 
     function validateOnlyLettersAndSpaces(string memory input) internal pure{
         bytes memory b = bytes(input);
+        // Check empty first
+        if (b.length == 0) revert EmptyInput();
+        
         for (uint i = 0; i < b.length; i++) {
             if (!((b[i] == " ") || (b[i] >= "A" && b[i] <= "Z") || (b[i] >= "a" && b[i] <= "z"))) {
-                revert OnlyLettersAndSpaces();
+                revert OnlyLettersAndSpaces(input);
             }
         }
     }

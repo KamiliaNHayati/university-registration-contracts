@@ -33,6 +33,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     Faculty[] public faculties;
     uint8 public maxLengthFacultyCode;
     uint8 public maxLengthMajorCode;
+    address public studentsContract;
     
     /* Private state variables */
     mapping(string => uint8) private facultyIndices;
@@ -47,6 +48,14 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     error HasExistingStudents(string student);
     error EnrolledCountCannotBeLessThanZero();
     error MaxEnrollmentReached();
+
+    /* Modifier */
+    modifier onlyOwnerOrStudents() {
+    if(msg.sender != owner() && msg.sender != studentsContract) {
+        revert OwnableUnauthorizedAccount(msg.sender);
+    }
+    _;
+}
 
     /* Functions */
     constructor(
@@ -267,10 +276,15 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         emit MaxLengthMajorCodeUpdated(newLength);
     }
 
+    function setStudentsContract(address _studentsContract) external override onlyOwner {
+        studentsContract = _studentsContract;
+        emit StudentsContractUpdated(_studentsContract);
+    }
+
     function incrementStudentCount(string calldata facultyName, string calldata majorName) 
         external 
         override
-        onlyOwner 
+        onlyOwnerOrStudents 
         returns(uint)
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
@@ -287,7 +301,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     function decrementStudentCount(string calldata facultyName, string calldata majorName) 
         external 
         override
-        onlyOwner 
+        onlyOwnerOrStudents 
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
