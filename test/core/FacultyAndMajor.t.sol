@@ -22,7 +22,8 @@ contract FacultyAndMajorTest is Test{
 
     event MaxLengthFacultyCodeUpdated(uint32);
     event MaxLengthMajorCodeUpdated(uint32);
-    event StudentsContractUpdated(address indexed studentsContract);
+    event StudentsContractUpdated(address studentsContract);
+    event UniversityNameUpdated(string universityName);
     /*//////////////////////////////////////////////////////////////
                               STATE
     //////////////////////////////////////////////////////////////*/
@@ -48,6 +49,17 @@ contract FacultyAndMajorTest is Test{
         facultyAndMajor = facultyAndMajorScript.run("Nusantara University", 4, 4);
 
         owner = facultyAndMajor.owner();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              HELPER FUNCTION
+    //////////////////////////////////////////////////////////////*/
+    function _addFacultyAndMajor() internal {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+
+        vm.prank(owner);
+        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -270,19 +282,15 @@ contract FacultyAndMajorTest is Test{
         assertEq(facultyAndMajor.listFaculties().length, 0);
     }
 
-    function testRemoveFaculty_WhenFacultyNotExist() public {
+    function testRemoveFaculty_RevertsWhenFacultyNotFound() public {
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedName));
-        facultyAndMajor.removeFaculty(facultyName);
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, "Nonexistent Faculty"));
+        facultyAndMajor.removeFaculty("Nonexistent Faculty");
     }
 
-    function testRemoveFaculty_RevertsWhenHasMajors() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
+    function testRemoveFaculty_RevertsWhenFacultyHasMajors() public {
+        _addFacultyAndMajor();
         
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName,majorName, majorCode, maxEnrollment, cost);
-
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorAlreadyExists.selector, "Faculty still has majors"));
         facultyAndMajor.removeFaculty(facultyName);
@@ -295,22 +303,6 @@ contract FacultyAndMajorTest is Test{
         vm.prank(owner);
         facultyAndMajor.removeFaculty(facultyName);
         assertEq(facultyAndMajor.listFaculties().length, 0);
-    }
-
-    function testRemoveFacultyWhenTheFacultyInTheLastIndex() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(newFacultyName, newFacultyCode);
-
-        vm.recordLogs();
-        vm.prank(owner);
-        facultyAndMajor.removeFaculty(newFacultyName);
-        Vm.Log[] memory entries = vm.getRecordedLogs();
-        bytes32 facultyIndex = entries[0].topics[1];
-
-        assertEq(uint256(facultyIndex), 2);
     }
 
     function testRemoveFaculty_SwapVerification() public {
@@ -329,20 +321,34 @@ contract FacultyAndMajorTest is Test{
         assertEq(faculties[0], formattedNewFacultyName);  // Second faculty now at index 0
     }
 
-    function testRemoveFacultyWhenTheFacultyNotInTheLastIndex() public {
+    // Test removing NOT last faculty (if branch - line 140)
+    function testRemoveFaculty_NotLastFaculty() public {
+        // Add two faculties
         vm.prank(owner);
         facultyAndMajor.addFaculty(facultyName, facultyCode);
-
+        
         vm.prank(owner);
         facultyAndMajor.addFaculty(newFacultyName, newFacultyCode);
-
-        vm.recordLogs();
+        
+        // Remove first one (not last)
         vm.prank(owner);
         facultyAndMajor.removeFaculty(facultyName);
-        Vm.Log[] memory entries = vm.getRecordedLogs();
-        bytes32 facultyIndex = entries[0].topics[1];
+        
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties.length, 1);
+        assertEq(faculties[0], formattedNewFacultyName);
+    }
 
-        assertEq(uint256(facultyIndex), 1);
+    // Test removing LAST faculty (else branch - line 140)
+    function testRemoveFaculty_LastFaculty() public {
+        vm.prank(owner);
+        facultyAndMajor.addFaculty(facultyName, facultyCode);
+    
+        vm.prank(owner);
+        facultyAndMajor.removeFaculty(facultyName);
+        
+        string[] memory faculties = facultyAndMajor.listFaculties();
+        assertEq(faculties.length, 0);
     }
 
     function testRemoveFaculty_EmitsEvent() public {
@@ -370,11 +376,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testAddMajor_WhenFacultyNameOnlyLettersAndSpace() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         assertEq(facultyAndMajor.listMajors(facultyName).length, 1);
     }
@@ -389,11 +391,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testAddMajor_WhenMajorNameOnlyLettersAndSpace() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         assertEq(facultyAndMajor.listMajors(facultyName).length, 1);
     }
@@ -405,22 +403,14 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testAddMajor_WhenFacultyExist() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         uint256 majorCostResult = facultyAndMajor.getMajorCost(facultyName, majorName);
         assertEq(majorCostResult, cost);
     }
 
     function testAddMajor_WhenMajorAlreadyExist() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorAlreadyExists.selector, formattedMajorName));
@@ -446,12 +436,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testAddMajor_OnlyChangesCode() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
-
+        _addFacultyAndMajor();
         string memory majorCodeResult = facultyAndMajor.getMajorCode(facultyName, majorName);
         assertEq(majorCodeResult, majorCode);
     }
@@ -471,11 +456,7 @@ contract FacultyAndMajorTest is Test{
                               UPDATE MAJOR
     //////////////////////////////////////////////////////////////*/
     function testUpdateMajor_WhenFacultyNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -487,11 +468,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenMajorNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -503,11 +480,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenMajorNameOnlyLettersAndSpace() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
@@ -517,11 +490,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenLengthMajorCodeIsMoreThan4() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.TooLongCode.selector);
@@ -529,11 +498,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenLengthMajorCodeIsLessThan4() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.TooShortCode.selector);
@@ -541,11 +506,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_OnlyChangesCode() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
@@ -555,11 +516,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenFacultyNotExist() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.FacultyNotFound.selector, formattedNewFacultyName));
@@ -567,11 +524,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenFacultyExist() public{
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.updateMajor(facultyName, majorName, newMajorName, newMajorCode, maxEnrollment, cost);
@@ -579,11 +532,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenMajorNotExist() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MajorNotFound.selector, formattedNewMajorName));
@@ -591,11 +540,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenMajorNameDifferentThanBefore() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.recordLogs();
         vm.prank(owner);
@@ -612,11 +557,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_WhenMajorNameSameAsBefore() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.recordLogs();
         vm.prank(owner);
@@ -633,11 +574,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testUpdateMajor_EmitsEvent() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.expectEmit(true, false, false, true, address(facultyAndMajor));
         emit UpdateMajor(1, 1, formattedMajorName, formattedNewMajorName, newMajorCode, maxEnrollment, cost);
@@ -650,11 +587,7 @@ contract FacultyAndMajorTest is Test{
                               REMOVE MAJOR
     //////////////////////////////////////////////////////////////*/
     function testRemoveMajor_WhenFacultyNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -666,11 +599,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testRemoveMajor_WhenMajorNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -682,11 +611,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testRemoveMajor_WhenMajorNameOnlyLettersAndSpace() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.removeMajor(facultyName, majorName);
@@ -710,11 +635,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testRemoveMajor_WhenStillHasStudents() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.incrementStudentCount(formattedName, formattedMajorName);
@@ -725,11 +646,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testRemoveMajor_WhenThereIsNoStudents() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.removeMajor(facultyName, majorName);
@@ -738,11 +655,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testRemoveMajor_EmitsEvent() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.expectEmit(true, false, false, true, address(facultyAndMajor));
         emit RemoveMajor(1, 1, formattedMajorName);
@@ -803,8 +716,23 @@ contract FacultyAndMajorTest is Test{
                         SET STUDENTS CONTRACT
     //////////////////////////////////////////////////////////////*/
 
+    function testSetStudentsContract_WhenAddressIsZero() public {
+        vm.prank(owner);
+        vm.expectRevert("Invalid address");
+        facultyAndMajor.setStudentsContract(address(0));
+    }
+
+    function testSetStudentsContract_WhenAddressIsSame() public {
+        vm.prank(owner);
+        facultyAndMajor.setStudentsContract(address(1));
+
+        vm.prank(owner);
+        vm.expectRevert("Same address");
+        facultyAndMajor.setStudentsContract(address(1));
+    }
+
     function testSetStudentsContract_EmitsEvents() public {
-        vm.expectEmit(true, false, false, false, address(facultyAndMajor));
+        vm.expectEmit(false, false, false, true, address(facultyAndMajor));
         emit StudentsContractUpdated(address(1));
 
         vm.prank(owner);
@@ -812,14 +740,34 @@ contract FacultyAndMajorTest is Test{
     }
 
     /*//////////////////////////////////////////////////////////////
+                        SET UNIVERSITY NAME
+    //////////////////////////////////////////////////////////////*/
+
+    function testSetUniversityName_WhenNameIsInvalid() public {
+        vm.prank(owner);
+        vm.expectRevert("Invalid name");
+        facultyAndMajor.setUniversityName("");
+    }
+
+    function testSetUniveristyName_WhenNameIsSame() public{
+        vm.prank(owner);
+        vm.expectRevert("Same name");
+        facultyAndMajor.setUniversityName("Nusantara University");
+    }
+
+    function testSetUniversityName_EmitsEvent() public {
+        vm.expectEmit(false, false, false, true, address(facultyAndMajor));
+        emit UniversityNameUpdated("Muhammadiyah University");
+
+        vm.prank(owner);
+        facultyAndMajor.setUniversityName("Muhammadiyah University");
+    }
+
+    /*//////////////////////////////////////////////////////////////
                         INCREMENT STUDENT COUNT
     //////////////////////////////////////////////////////////////*/
     function testIncrementStudentCount_WhenFacultyNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -831,11 +779,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testIncrementStudentCount_WhenMajorNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -847,11 +791,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testIncrementStudentCount_WhenMajorNameOnlyLettersAndSpace() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.incrementStudentCount(facultyName, majorName);
@@ -876,28 +816,21 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testIncrementStudentCount_WhenEnrolledCountIsMoreThanMaxEnrollment() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         for(uint i = 0; i < maxEnrollment; i++) {
             vm.prank(owner);
             facultyAndMajor.incrementStudentCount(facultyName, majorName);
         }
 
+        (, , , uint16 enrolledCountResult, ) = facultyAndMajor.getMajorDetails(facultyName, majorName);
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MaxEnrollmentReached.selector));
+        vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.MaxEnrollmentReached.selector, majorName, enrolledCountResult, maxEnrollment));
         facultyAndMajor.incrementStudentCount(facultyName, majorName);
     }
 
     function testIncrementStudentCount_Success() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.incrementStudentCount(facultyName, majorName);
@@ -911,11 +844,7 @@ contract FacultyAndMajorTest is Test{
     //////////////////////////////////////////////////////////////*/
 
     function testDecrementStudentCount_WhenFacultyNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -927,11 +856,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testDecrementStudentCount_WhenMajorNameIsInvalid() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(Check.EmptyInput.selector);
@@ -943,11 +868,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testDecrementStudentCount_WhenMajorNameOnlyLettersAndSpace() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.incrementStudentCount(facultyName, majorName);
@@ -972,11 +893,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testDecrementStudentCount_WhenEnrolledCountIsZero() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(FacultyAndMajor.EnrolledCountCannotBeLessThanZero.selector));
@@ -984,11 +901,7 @@ contract FacultyAndMajorTest is Test{
     }
 
     function testDecrementStudentCount_Success() public {
-        vm.prank(owner);
-        facultyAndMajor.addFaculty(facultyName, facultyCode);
-
-        vm.prank(owner);
-        facultyAndMajor.addMajor(facultyName, majorName, majorCode, maxEnrollment, cost);
+        _addFacultyAndMajor();
 
         vm.prank(owner);
         facultyAndMajor.incrementStudentCount(facultyName, majorName);

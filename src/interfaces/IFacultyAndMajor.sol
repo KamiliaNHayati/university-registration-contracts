@@ -13,6 +13,7 @@ interface IFacultyAndMajor {
     function setLengthFacultyCode(uint8 newLength) external;
     function setLengthMajorCode(uint8 newLength) external;
     function setStudentsContract(address _students) external;
+    function setUniversityName(string calldata _universityName) external;
 
     function getMajorCost(string calldata facultyName, string calldata majorName) external view returns (uint);
     function getMajorDetails(string calldata facultyName, string calldata majorName) external view returns (uint8, string memory, string memory, uint16, uint);
@@ -34,5 +35,6 @@ interface IFacultyAndMajor {
 
     event MaxLengthFacultyCodeUpdated(uint32);
     event MaxLengthMajorCodeUpdated(uint32);
-    event StudentsContractUpdated(address indexed studentsContract);
+    event StudentsContractUpdated(address studentsContract);
+    event UniversityNameUpdated(string universityName);
 }

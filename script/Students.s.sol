@@ -15,7 +15,8 @@ contract StudentsScript is Script {
         uint8 maximumMonth, 
         uint8 validityEndMonth, 
         uint8 validityEndDay, 
-        uint8 validityYearOffset
+        uint8 validityYearOffset,
+        uint8 maximumApply
     ) public returns (Students) {
         vm.startBroadcast(); 
 
@@ -28,7 +29,8 @@ contract StudentsScript is Script {
             maximumMonth,
             validityEndMonth,
             validityEndDay,
-            validityYearOffset
+            validityYearOffset,
+            maximumApply
         );
 
         // and if we done the broadcasting, we're going to do 

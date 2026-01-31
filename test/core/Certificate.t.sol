@@ -15,6 +15,7 @@ contract CertificateTest is Test{
                               EVENT
     //////////////////////////////////////////////////////////////*/
     event CertificateMinted(address indexed student, uint256 tokenId);
+    event StudentsContractUpdated(address indexed newStudentsContract);
 
     /*//////////////////////////////////////////////////////////////
                               STATE
@@ -37,7 +38,7 @@ contract CertificateTest is Test{
         facultyAndMajor = facultyAndMajorScript.run("Nusantara University", 4, 4);
 
         StudentsScript studentsScript = new StudentsScript();
-        students = studentsScript.run(address(facultyAndMajor), 6, 8, 5, 20, 4);
+        students = studentsScript.run(address(facultyAndMajor), 6, 8, 5, 20, 4, 3);
 
         CertificateScript certificateScript = new CertificateScript();
         certificate = certificateScript.run(address(students));
@@ -68,7 +69,7 @@ contract CertificateTest is Test{
         students.applyForEnrollment(studentName, facultyName, majorName);
 
         vm.prank(owner);
-        students.updateApplicationStatus(applicant, Students.ApplicationStatus.Approved);
+        students.updateApplicationStatus(applicant, majorName, Students.ApplicationStatus.Approved);
 
         vm.prank(applicant);
         students.enrollStudent{value: cost}();
@@ -91,7 +92,7 @@ contract CertificateTest is Test{
         certificate.mintCertificate();
     }
 
-    function testMintCertificate_RevertAlreadyClaimed() public {
+    function testMintCertificate_RevertsWhenAlreadyClaimed() public {
         _enrollAndGraduateStudent();
 
         vm.prank(applicant);
@@ -109,5 +110,28 @@ contract CertificateTest is Test{
         vm.expectEmit(true, false, false, true, address(certificate));
         emit CertificateMinted(applicant, 0);
         certificate.mintCertificate();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                            SETSTUDENTSCONTRACT
+    //////////////////////////////////////////////////////////////*/
+
+    function testSetStudentsContract_RevertWhenZeroAddress() public { 
+        vm.prank(owner);
+        vm.expectRevert("Invalid address");
+        certificate.setStudentsContract(address(0));
+    }
+
+    function testSetStudentsContract_RevertWhenSameAddress() public { 
+        vm.prank(owner);
+        vm.expectRevert("Same address");
+        certificate.setStudentsContract(address(students));
+    }
+
+    function testSetStudentsContract_EmitsEvent() public { 
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, true, address(certificate));
+        emit Certificate.StudentsContractUpdated(address(1));
+        certificate.setStudentsContract(address(1));
     }
 }

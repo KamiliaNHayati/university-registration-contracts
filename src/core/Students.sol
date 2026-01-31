@@ -58,7 +58,8 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     bool public isOpen;
     uint8 public minimumMonth;
     uint8 public maximumMonth;
-    mapping(address => Application) public applications;
+    uint8 public maximumApply;
+    mapping(address => Application[]) public applications;
     uint8 public validityEndMonth;     
     uint8 public validityEndDay;
     uint8 public validityYearOffset;    // 4 years from enrollment
@@ -73,12 +74,13 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     /* Events */
     event StudentEnrolled(string studentId, string faculty, string major, StudentStatus status);
     event StudentDroppedOut(string studentId, string faculty, string major);
-    event SemesterUpdated(uint8 indexed semester);
     event ApplicationSubmitted(address applicant);
     event ApplicationApproved(address applicant);
     event ApplicationRejected(address applicant);
     event ValidityPeriodUpdated(uint8 month, uint8 day, uint8 yearOffset);
     event StudentGPAUpdated(address indexed student, uint16 gpa);
+    event EnrollmentMonthsUpdated(uint8 minimumMonth, uint8 maximumMonth);
+    event FacultyAndMajorUpdated(address indexed facultyAndMajor);
     event StudentGraduated(address indexed student, string studentId);
 
     /* Errors */
@@ -86,26 +88,35 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     error StudentAlreadyDroppedOut(address student);
     error EnrollmentClosed();
     error InvalidPaymentAmount(uint256 sent, uint256 required);
-    error MajorOperationFailed(string faculty, string major, string reason);
     error StudentNotEnrolled(address student);
     error StudentNameMismatch(string provided, string stored);
     error InvalidEnrollmentPeriod();
-    error NimGenerationFailed(string faculty, string major, string reason);
-    error StudentCountError(string faculty, string major, string reason);
     error NonOnlyOwner();
     error NotApproved();
     error UpkeepNotNeeded();
     error InvalidGPA(uint16 gpa);
     error NotEligibleForGraduation(address student, uint8 currentSemester);
     error GPATooLow(uint16 gpa);
+    error MaxApplicationsExceeded(uint8 current, uint8 max);
+    error AlreadyApplied(string majorName);
+    error AlreadyApproved(address applicant, string majorName);
     
-    constructor(address _facultyAndMajor, uint8 _minimumMonth, uint8 _maximumMonth, uint8 _validityEndMonth, uint8 _validityEndDay, uint8 _validityYearOffset) {
+    constructor(
+        address _facultyAndMajor,
+        uint8 _minimumMonth,
+        uint8 _maximumMonth,
+        uint8 _validityEndMonth,
+        uint8 _validityEndDay,
+        uint8 _validityYearOffset,
+        uint8 _maximumApply
+    ) {
         facultyAndMajor = IFacultyAndMajor(_facultyAndMajor);
         minimumMonth = _minimumMonth;
         maximumMonth = _maximumMonth;
         validityEndMonth = _validityEndMonth;
         validityEndDay = _validityEndDay;
         validityYearOffset = _validityYearOffset;
+        maximumApply = _maximumApply;
     }
 
     /* External Functions */
@@ -116,7 +127,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
             revert UpkeepNotNeeded();  // Optional: add this error
         }
         
-        if (isWithinEnrollmentMonths()) {
+        if (_isWithinEnrollmentMonths()) {
             isOpen = true;
         } else {
             isOpen = false;
@@ -124,31 +135,48 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     }
 
     /// @notice Apply for enrollment in a faculty and major
-    function applyForEnrollment(string calldata studentName, string calldata facultyName, string calldata majorName) 
+    function applyForEnrollment(
+        string calldata studentName, 
+        string calldata facultyName, 
+        string calldata majorName
+    ) 
         external  
     {
         if(msg.sender == owner()) revert NonOnlyOwner();
         if (!isOpen) revert EnrollmentClosed();
+        facultyAndMajor.getMajorDetails(facultyName, majorName);
+        
+        uint8 currentApply = uint8(applications[msg.sender].length);
+        if (currentApply >= maximumApply) revert MaxApplicationsExceeded(currentApply, maximumApply);
+        _findAlreadyApply(majorName);
 
         Check.validateOnlyLettersAndSpaces(studentName);
         Check.validateOnlyLettersAndSpaces(facultyName);
         Check.validateOnlyLettersAndSpaces(majorName);
 
-        applications[msg.sender] = Application({
+        applications[msg.sender].push(Application({
             applicant: msg.sender, 
             name: studentName, 
             faculty: facultyName, 
             major: majorName, 
             status: ApplicationStatus.Pending
-        });
+        }));
         applicantIndex[msg.sender] = pendingApplicants.length;
         pendingApplicants.push(msg.sender);
         emit ApplicationSubmitted(msg.sender);
     }
 
     /// @notice Approve or reject a student's application
-    function updateApplicationStatus(address applicant, ApplicationStatus status) external onlyOwner {
-        applications[applicant].status = status;
+    function updateApplicationStatus(
+        address applicant, 
+        string memory majorName, 
+        ApplicationStatus status
+    ) 
+        external 
+        onlyOwner 
+    {
+        uint8 majorIndex = _findApplicationIndex(applicant, majorName);
+        applications[applicant][majorIndex].status = status;
         if (status == ApplicationStatus.Approved) {
             _removeFromPendingList(applicant);
             emit ApplicationApproved(applicant);
@@ -159,11 +187,9 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
 
     /// @notice Complete enrollment by paying the required fee
     function enrollStudent() external payable {
-        Application storage app = applications[msg.sender];
-
-        if(!(app.status == ApplicationStatus.Approved)){
-            revert NotApproved();
-        }
+        uint8 majorIndex = _findApprovedApplication(msg.sender);
+        Application storage app = applications[msg.sender][majorIndex];
+        // Note: _findApprovedApplication already reverts if no approved application found
 
         if(!isOpen){
             revert InvalidEnrollmentPeriod();
@@ -177,12 +203,12 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         string memory faculty = app.faculty;
         string memory major = app.major;
 
-        validateEnrollmentFee(msg.value, faculty, major);
+        _validateEnrollmentFee(msg.value, faculty, major);
 
         string memory name = Check.capitalizeFirstLetters(studentName);
-        string memory email = generateStudentEmail(name);
-        string memory id = generateStudentId(faculty, major);
-        string memory validityPeriod = calculateValidityPeriod();
+        string memory email = _generateStudentEmail(name);
+        string memory id = _generateStudentId(faculty, major);
+        string memory validityPeriod = _calculateValidityPeriod();
 
         studentRecords[msg.sender] = Biodata({
             studentId: id, 
@@ -242,6 +268,27 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         emit ValidityPeriodUpdated(month, day, yearOffset);
     }
 
+    /// @notice Set the enrollment period months (e.g., month 6 to 8 for June-August)
+    function setEnrollmentMonths(uint8 _minimumMonth, uint8 _maximumMonth) 
+        external 
+        onlyOwner 
+    {
+        require(_minimumMonth >= 1 && _minimumMonth <= 12, "Invalid minimum month");
+        require(_maximumMonth >= 1 && _maximumMonth <= 12, "Invalid maximum month");
+        require(_minimumMonth <= _maximumMonth, "Min must be <= max");
+        
+        minimumMonth = _minimumMonth;
+        maximumMonth = _maximumMonth;
+        emit EnrollmentMonthsUpdated(_minimumMonth, _maximumMonth);
+    }
+
+    /// @notice Update the FacultyAndMajor contract address
+    function setFacultyAndMajor(address _facultyAndMajor) external onlyOwner {
+        require(_facultyAndMajor != address(0), "Invalid address");
+        facultyAndMajor = IFacultyAndMajor(_facultyAndMajor);
+        emit FacultyAndMajorUpdated(_facultyAndMajor);
+    }
+
     /// @notice Update a student's GPA (stored as 350 = 3.50)
     function updateStudentGPA(address student, uint16 gpa) external onlyOwner {
         if (gpa > 400) revert InvalidGPA(gpa); 
@@ -267,7 +314,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         returns (string memory, string memory, string memory, string memory, string memory, uint8, StudentStatus, string memory){
         Biodata storage studentData = studentRecords[msg.sender];
         
-        uint8 semester = calculateSemester(studentData.enrollmentTime);
+        uint8 semester = _calculateSemester(studentData.enrollmentTime);
         studentData.semester = semester;
 
         return (
@@ -290,8 +337,8 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         override 
         returns (bool upkeepNeeded, bytes memory) 
     {
-        bool shouldOpen = !isOpen && isWithinEnrollmentMonths();
-        bool shouldClose = isOpen && !isWithinEnrollmentMonths();
+        bool shouldOpen = !isOpen && _isWithinEnrollmentMonths();
+        bool shouldClose = isOpen && !_isWithinEnrollmentMonths();
         upkeepNeeded = shouldOpen || shouldClose;
         return (upkeepNeeded, "");
     }
@@ -314,7 +361,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     
     /* Private functions */
     // studentId = facultyCode + majorCode + studentOrder
-    function generateStudentId(string memory facultyName, string memory majorName) 
+    function _generateStudentId(string memory facultyName, string memory majorName) 
         private 
         returns (string memory) 
     {
@@ -335,46 +382,12 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     }
 
     /* Private functions that are view*/
-    function isWithinEnrollmentMonths() private view returns (bool) {
+    function _isWithinEnrollmentMonths() private view returns (bool) {
         uint8 month = uint8(BokkyPooBahsDateTimeLibrary.getMonth(block.timestamp));
         return month >= minimumMonth && month <= maximumMonth;
     }
 
-    function generateStudentEmail(string memory name) 
-        private 
-        pure 
-        returns(string memory) 
-    {
-        string memory formattedName = Email.convertSpacesToDots(name);
-        return string.concat(formattedName, "@university.edu");
-    }
-    
-    function calculateValidityPeriod() private view returns(string memory) {
-        uint expirationYear = BokkyPooBahsDateTimeLibrary.getYear(block.timestamp) + validityYearOffset;
-        
-        string memory monthName;
-        if (validityEndMonth == 1) monthName = "January";
-        else if (validityEndMonth == 2) monthName = "February";
-        else if (validityEndMonth == 3) monthName = "March";
-        else if (validityEndMonth == 4) monthName = "April";
-        else if (validityEndMonth == 5) monthName = "May";
-        else if (validityEndMonth == 6) monthName = "June";
-        else if (validityEndMonth == 7) monthName = "July";
-        else if (validityEndMonth == 8) monthName = "August";
-        else if (validityEndMonth == 9) monthName = "September";
-        else if (validityEndMonth == 10) monthName = "October";
-        else if (validityEndMonth == 11) monthName = "November";
-        else if (validityEndMonth == 12) monthName = "December";
-        
-        return string.concat(
-            "Valid until ", 
-            monthName, " ", 
-            Strings.toString(validityEndDay), ", ", 
-            Strings.toString(expirationYear)
-        );
-    }
-
-    function validateEnrollmentFee(uint value, string memory facultyName, string memory majorName) 
+    function _validateEnrollmentFee(uint value, string memory facultyName, string memory majorName) 
         private 
         view 
     {
@@ -382,8 +395,39 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         if(value != cost) revert InvalidPaymentAmount(value, cost);
     }
 
-    
-    function calculateSemester(uint256 enrollmentTime) 
+    function _findAlreadyApply(string memory majorName) private view {
+        for(uint8 i = 0; i < applications[msg.sender].length; i++) {
+            if(Check.compareStrings(applications[msg.sender][i].major, majorName)) {
+                revert AlreadyApplied(majorName);
+            }
+        }
+    }
+
+    /// @notice Find application index by major name (for updating)
+    function _findApplicationIndex(address applicant, string memory majorName) 
+        private 
+        view 
+        returns(uint8) 
+    {
+        for(uint8 i = 0; i < applications[applicant].length; i++) {
+            if(Check.compareStrings(applications[applicant][i].major, majorName) && applications[applicant][i].status == ApplicationStatus.Pending) {
+                return i;  // Found, return index
+            }
+        }
+        revert AlreadyApproved(applicant, majorName);  // Or create new error: ApplicationNotFound
+    }
+
+    /// @notice Find the index of an approved application for a student
+    function _findApprovedApplication(address student) private view returns(uint8) {
+        for(uint8 i = 0; i < applications[student].length; i++) {
+            if(applications[student][i].status == ApplicationStatus.Approved) {
+                return i;
+            }
+        }
+        revert NotApproved();
+    }
+
+    function _calculateSemester(uint256 enrollmentTime) 
         private 
         view 
         returns (uint8) 
@@ -407,6 +451,40 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         delete applicantIndex[applicant];
     }
 
+
+    function _generateStudentEmail(string memory name) 
+        private 
+        pure 
+        returns(string memory) 
+    {
+        string memory formattedName = Email.convertSpacesToDots(name);
+        return string.concat(formattedName, "@university.edu");
+    }
+    
+    function _calculateValidityPeriod() private view returns(string memory) {
+        uint expirationYear = BokkyPooBahsDateTimeLibrary.getYear(block.timestamp) + validityYearOffset;
+        
+        string memory monthName;
+        if (validityEndMonth == 1) monthName = "January";
+        else if (validityEndMonth == 2) monthName = "February";
+        else if (validityEndMonth == 3) monthName = "March";
+        else if (validityEndMonth == 4) monthName = "April";
+        else if (validityEndMonth == 5) monthName = "May";
+        else if (validityEndMonth == 6) monthName = "June";
+        else if (validityEndMonth == 7) monthName = "July";
+        else if (validityEndMonth == 8) monthName = "August";
+        else if (validityEndMonth == 9) monthName = "September";
+        else if (validityEndMonth == 10) monthName = "October";
+        else if (validityEndMonth == 11) monthName = "November";
+        else if (validityEndMonth == 12) monthName = "December";
+        
+        return string.concat(
+            "Valid until ", 
+            monthName, " ", 
+            Strings.toString(validityEndDay), ", ", 
+            Strings.toString(expirationYear)
+        );
+    }
 }
 
 

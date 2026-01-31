@@ -49,7 +49,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     error InvalidLengthFacultyCode(uint facultyCode);
     error HasExistingStudents(string student);
     error EnrolledCountCannotBeLessThanZero();
-    error MaxEnrollmentReached();
+    error MaxEnrollmentReached(string major, uint16 current, uint16 max);
 
     /* Modifier */
     modifier onlyOwnerOrStudents() {
@@ -63,7 +63,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         uint8 _maxLengthFacultyCode, 
         uint8 _maxLengthMajorCode
     ) {
-        universityName = _universityName;
+        universityName = _formatAndValidateName(_universityName);
         maxLengthFacultyCode = _maxLengthFacultyCode;
         maxLengthMajorCode = _maxLengthMajorCode;
     }
@@ -77,7 +77,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     {
         string memory formattedName = _formatAndValidateName(facultyName);
 
-        (bool facultyExist,) = findFaculty(formattedName);
+        (bool facultyExist,) = _findFaculty(formattedName);
         if(facultyExist) revert FacultyAlreadyExists(formattedName);
         
         Check.validateLengthCode(facultyCode, maxLengthFacultyCode);
@@ -105,7 +105,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         string memory formattedName = _formatAndValidateName(facultyName);
         string memory formattedNewName = _formatAndValidateName(newName);
 
-        (bool facultyExist, uint8 facultyIndex) = findFaculty(formattedName);
+        (bool facultyExist, uint8 facultyIndex) = _findFaculty(formattedName);
         if(!facultyExist) revert FacultyNotFound(formattedName);
 
         Check.validateLengthCode(newFacultyCode, maxLengthFacultyCode);
@@ -129,7 +129,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     function removeFaculty(string calldata facultyName) external override onlyOwner {
         string memory formattedName = _formatAndValidateName(facultyName);
         
-        (bool facultyExist, uint8 facultyIndex) = findFaculty(formattedName);
+        (bool facultyExist, uint8 facultyIndex) = _findFaculty(formattedName);
         if(!facultyExist) revert FacultyNotFound(formattedName);
 
         Faculty storage faculty = faculties[facultyIndex];
@@ -178,7 +178,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
 
-        (bool existFaculty, uint8 facultyIndex) = findFaculty(formattedFacultyName);
+        (bool existFaculty, uint8 facultyIndex) = _findFaculty(formattedFacultyName);
         if(!existFaculty) revert FacultyNotFound(formattedFacultyName);
 
         uint8 existingId = faculties[facultyIndex].majors[formattedMajorName].idMajor;
@@ -219,12 +219,13 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         string memory formattedNewMajorName = _formatAndValidateName(newMajorName);
         
         Check.validateLengthCode(newMajorCode, maxLengthMajorCode);
-        (uint8 facultyIndex, ) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
+        (uint8 facultyIndex, uint8 majorIndex) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
         Faculty storage faculty = faculties[facultyIndex];
         
         // Handle rename (if different)
         if (!Check.compareStrings(formattedMajorName, formattedNewMajorName)) {
             _renameMajor(faculty, formattedMajorName, formattedNewMajorName);
+            faculty.majorNames[majorIndex] = formattedNewMajorName;
         }
         
         // Update the major (whether renamed or not)
@@ -247,7 +248,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
         
-        (uint8 facultyIndex, uint8 majorIndex) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);        
+        (uint8 facultyIndex, uint8 majorIndex) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);        
         Faculty storage faculty = faculties[facultyIndex];
         
         if(faculty.majors[formattedMajorName].enrolledCount > 0) {
@@ -257,6 +258,8 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         uint8 length = uint8(faculty.majorNames.length);
         
         for (uint8 i = majorIndex; i < length - 1; i++) {
+            delete faculty.majors[faculty.majorNames[i]];
+            faculty.majors[faculty.majorNames[i]] = faculty.majors[faculty.majorNames[i + 1]];
             faculty.majorNames[i] = faculty.majorNames[i + 1];
         }
 
@@ -282,8 +285,18 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     }
 
     function setStudentsContract(address _studentsContract) external override onlyOwner {
+        require(_studentsContract != address(0), "Invalid address");
+        require(_studentsContract != address(studentsContract), "Same address");
         studentsContract = _studentsContract;
         emit StudentsContractUpdated(_studentsContract);
+    }
+
+    function setUniversityName(string calldata _universityName) external override onlyOwner {
+        require(bytes(_universityName).length > 0, "Invalid name");
+        string memory formattedUniversityName = _formatAndValidateName(_universityName);
+        require(!Check.compareStrings(universityName, formattedUniversityName), "Same name");
+        universityName = formattedUniversityName;
+        emit UniversityNameUpdated(formattedUniversityName);
     }
 
     function incrementStudentCount(string calldata facultyName, string calldata majorName) 
@@ -294,10 +307,10 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
-        (uint8 facultyIndex, ) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
+        (uint8 facultyIndex, ) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
         Major storage major = faculties[facultyIndex].majors[formattedMajorName];
         if(major.enrolledCount >= major.maxEnrollment) {
-            revert MaxEnrollmentReached();
+            revert MaxEnrollmentReached(formattedMajorName, major.enrolledCount, major.maxEnrollment);
         }
         major.enrolledCount += 1;
         return major.enrolledCount;
@@ -310,7 +323,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
-        (uint8 facultyIndex, ) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
+        (uint8 facultyIndex, ) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
         Major storage major = faculties[facultyIndex].majors[formattedMajorName];
         if (major.enrolledCount == 0) {
             revert EnrolledCountCannotBeLessThanZero();
@@ -326,7 +339,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         returns (string memory facultyCode)
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
-        (bool existFaculty, uint8 facultyIndex) = findFaculty(formattedFacultyName);
+        (bool existFaculty, uint8 facultyIndex) = _findFaculty(formattedFacultyName);
         if(!existFaculty) revert FacultyNotFound(formattedFacultyName);
 
         facultyCode = faculties[facultyIndex].facultyCode;
@@ -340,7 +353,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
-        (uint8 facultyIndex, ) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
+        (uint8 facultyIndex, ) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
         majorCode = faculties[facultyIndex].majors[majorName].majorCode;
     }
 
@@ -352,7 +365,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
-        (uint8 facultyIndex, ) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
+        (uint8 facultyIndex, ) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
         Faculty storage faculty = faculties[facultyIndex];
         uint enrollmentCost = faculty.majors[majorName].enrollmentCost;        
         return enrollmentCost;
@@ -366,7 +379,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
         string memory formattedMajorName = _formatAndValidateName(majorName);
-        (uint8 facultyIndex, ) = validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
+        (uint8 facultyIndex, ) = _validateFacultyAndMajor(formattedFacultyName, formattedMajorName);
         Major storage major = faculties[facultyIndex].majors[majorName];
         return (major.idMajor, major.majorName, major.majorCode, major.enrolledCount, major.enrollmentCost);
     }
@@ -378,7 +391,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         returns (string[] memory) 
     {
         string memory formattedFacultyName = _formatAndValidateName(facultyName);
-        (bool existFaculty, uint8 facultyIndex) = findFaculty(formattedFacultyName);
+        (bool existFaculty, uint8 facultyIndex) = _findFaculty(formattedFacultyName);
         if(!existFaculty) revert FacultyNotFound("Faculty not found");
         return faculties[facultyIndex].majorNames;
     }
@@ -393,7 +406,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
     }
     
     /* Internal functions */
-    function _onlyOwnerOrStudents() internal {
+    function _onlyOwnerOrStudents() view internal {
         if(msg.sender != owner() && msg.sender != studentsContract) {
             revert OwnableUnauthorizedAccount(msg.sender);
         }
@@ -415,7 +428,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         delete faculty.majors[oldName];
     }
 
-    function findFaculty(string memory facultyName) 
+    function _findFaculty(string memory facultyName) 
         private 
         view 
         returns (bool, uint8) 
@@ -425,12 +438,12 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         return (index != 0, index > 0 ? index - 1 : 0);
     }
 
-    function validateFacultyAndMajor(string memory facultyName, string memory majorName) 
+    function _validateFacultyAndMajor(string memory facultyName, string memory majorName) 
         private 
         view 
         returns(uint8, uint8)
     {
-        (bool existFaculty, uint8 facultyIndex) = findFaculty(facultyName);
+        (bool existFaculty, uint8 facultyIndex) = _findFaculty(facultyName);
         if(!existFaculty) revert FacultyNotFound(facultyName);
         
         uint8 idMajor = faculties[facultyIndex].majors[majorName].idMajor;
@@ -439,7 +452,7 @@ contract FacultyAndMajor is OwnerControlled, IFacultyAndMajor {
         return (facultyIndex, idMajor - 1);
     }
 
-    function _formatAndValidateName(string calldata name) private pure returns (string memory) {
+    function _formatAndValidateName(string memory name) private pure returns (string memory) {
         Check.validateOnlyLettersAndSpaces(name);
         return Check.capitalizeFirstLetters(name);
     }
