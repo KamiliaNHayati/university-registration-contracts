@@ -163,7 +163,9 @@ export default function Dashboard() {
                         <div className="w-24 h-24 mx-auto mb-8 rounded-full bg-purple-500/20 flex items-center justify-center text-5xl">📊</div>
                         <h2 className="text-4xl font-bold text-white mb-4" style={{ fontFamily: 'Space Grotesk' }}>Student Dashboard</h2>
                         <p className="text-gray-400 text-lg mb-8">Connect your wallet to view your status</p>
-                        <ConnectButton />
+                        <div className="flex justify-center">
+                            <ConnectButton />
+                        </div>
                     </div>
                 ) : (
                     <div className="space-y-8 animate-fade-in">
