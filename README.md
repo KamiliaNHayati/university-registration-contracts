@@ -2,6 +2,8 @@
 
 A decentralized university registration system built with Solidity and Foundry, featuring Chainlink Automation for automated enrollment periods and ERC721 NFT certificates for graduates.
 
+**🔗 [Live Demo](https://university-registration-contracts.vercel.app/) | 📜 [Contracts on Etherscan](https://sepolia.etherscan.io/address/0x85B7e058d1eDaeBaF9b64fd1AE9F0c515230030E)**
+
 ## ✨ Features
 
 - **Faculty & Major Management** - Add, update, and manage faculties and majors with customizable codes
@@ -51,8 +53,8 @@ A decentralized university registration system built with Solidity and Foundry, 
 ### Installation
 
 ```bash
-git clone https://github.com/KamiliaNHayati/UniversityRegistration.git
-cd UniversityRegistration
+git clone https://github.com/KamiliaNHayati/university-registration-contracts.git
+cd university-registration-contracts
 forge install
 ```
 
@@ -82,8 +84,8 @@ forge coverage
 
 | Contract | Address |
 |----------|---------|
-| FacultyAndMajor | [`0x4862ff14b4e032f9aA68eEA8b21ee96655E33d9c`](https://sepolia.etherscan.io/address/0x4862ff14b4e032f9aA68eEA8b21ee96655E33d9c) |
-| Students | [`0x73D1a473f32b82bD3019d028ee664B5cc9D2F5D1`](https://sepolia.etherscan.io/address/0x73D1a473f32b82bD3019d028ee664B5cc9D2F5D1) |
+| FacultyAndMajor | [`0xD75e722E3579148eC6C2B1306C7629C4Fe0eB737`](https://sepolia.etherscan.io/address/0xD75e722E3579148eC6C2B1306C7629C4Fe0eB737) |
+| Students | [`0x85B7e058d1eDaeBaF9b64fd1AE9F0c515230030E`](https://sepolia.etherscan.io/address/0x85B7e058d1eDaeBaF9b64fd1AE9F0c515230030E) |
 | Certificate | [`0xe0187e061DA32222C51c5093c801d835E169D2BA`](https://sepolia.etherscan.io/address/0xe0187e061DA32222C51c5093c801d835E169D2BA) |
 
 ### Deploy Contracts
