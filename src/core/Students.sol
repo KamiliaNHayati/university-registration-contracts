@@ -310,8 +310,9 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
     }
 
     function getStudent() 
-        external 
-        returns (string memory, string memory, string memory, string memory, string memory, uint8, StudentStatus, string memory){
+        external
+        returns (string memory, string memory, string memory, string memory, string memory, uint8, StudentStatus, string memory)
+    {
         Biodata storage studentData = studentRecords[msg.sender];
         
         uint8 semester = _calculateSemester(studentData.enrollmentTime);
@@ -368,7 +369,7 @@ contract Students is OwnerControlled, AutomationCompatibleInterface, IStudents{
         uint studentOrder = facultyAndMajor.incrementStudentCount(facultyName, majorName);
         string memory lastDigits;
 
-        if (studentOrder >= 1 && studentOrder < 100) {
+        if (studentOrder >= 1 && studentOrder < 10) {
             lastDigits = string.concat("00", Strings.toString(studentOrder));
         }
         else if(studentOrder >= 10 && studentOrder < 100) {
